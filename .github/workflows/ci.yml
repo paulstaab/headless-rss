@@ -17,10 +17,13 @@ jobs:
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
     - name: Lint with ruff
       run: |
-        uv run ruff check src tests
+        uv run --extra dev ruff check src tests
+    - name: Format with ruff
+      run: |
+        uv run --extra dev ruff format src tests
     - name: Type check with mypy
       run: |
-        uv run mypy src tests
+        uv run --extra dev mypy src tests
 
   test:
     runs-on: ubuntu-latest
@@ -36,4 +39,4 @@ jobs:
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
     - name: Run tests
       run: |
-        uv run pytest tests
+        uv run --extra dev pytest tests
