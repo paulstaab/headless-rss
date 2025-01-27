@@ -1,0 +1,18 @@
+[project]
+name = "nano-rss"
+version = "0.0.1"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.14.1",
+    "fastapi>=0.115.7",
+    "sqlalchemy>=2.0.37",
+    "uvicorn>=0.34.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "ruff>=0.9.3",
+]
