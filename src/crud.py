@@ -1,9 +1,9 @@
-from typing import List
 from sqlalchemy.orm import Session
+
 from src import database, schemas
 
 
-def get_posts(db: Session, skip: int = 0, limit: int = 10) -> List[database.Post]:
+def get_posts(db: Session, skip: int = 0, limit: int = 10) -> list[database.Post]:
     return db.query(database.Post).offset(skip).limit(limit).all()
 
 
