@@ -1,6 +1,7 @@
 from fastapi import FastAPI
-from src.database import SessionLocal, engine
+from src.database import SessionLocal
 from src import crud, schemas
+from typing import List
 
 app = FastAPI()
 
