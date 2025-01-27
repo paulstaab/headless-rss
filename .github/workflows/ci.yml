@@ -14,8 +14,6 @@ jobs:
     - name: Install uv
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
-    - name: Add uv to PATH
-      run: |
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
     - name: Lint with ruff
       run: |
