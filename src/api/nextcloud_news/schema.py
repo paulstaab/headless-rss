@@ -17,7 +17,8 @@ class Post(PostBase):
         orm_mode = True
 
 
-class FeedBase(BaseModel):
+class Feed(BaseModel):
+    id: int
     url: str
     title: str
     favicon_link: str
@@ -31,13 +32,4 @@ class FeedBase(BaseModel):
     update_error_count: int
     last_update_error: str
 
-
-class FeedCreate(FeedBase):
-    pass
-
-
-class Feed(FeedBase):
-    id: int
-
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
