@@ -1,66 +1,32 @@
-# Nano RSS
+# headless-rss
 
-Nano RSS is a backend service for collecting posts from different RSS feeds and providing an API to access them. The API is compatible with the Freshness API.
+A minimal-viable feed aggregator made for self-hosting.
+
+`headless-rss` is an rss feed aggregator with a minimal feature set.
+It is indended to be used in a homelab setting with a single user. It provides only
+a Nextcloud News compatible API, but not webinterface, and can serve as a back-end
+for compatible apps suchs as `NextNews` and `Fiery Feeds`.
+
+If you are looking for a feature-complete feed aggregator back-end that supports e.g.
+different protocals, multiple users or databases other than sqlite, please look at
+[Arsse](https://code.mensbeam.com/MensBeam/Arsse).
 
 ## Features
 
-- Collect posts from different RSS feeds
-- Provide an API to access the collected posts
-- Use SQLite as a database
-- Use SQLAlchemy 2 as ORM
-- Use Alembic to manage migrations
-- Use FastAPI to provide the API
-- Use uv to manage dependencies
-- Use ruff and GitHub Actions to check the code
-- Provide a Docker image to run the service
+- [ ] Can aggregate rss and atom feeds
+- [ ] Can serve as a back-end for Apps that speak the Nextcloud News protocol
+- [ ] Can be hosted with a single unpriviledged docker container
 
 ## Setup Instructions
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/paulstaab/nano-rss.git
-   cd nano-rss
-   ```
-
-2. Create a virtual environment and activate it:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install the dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Set up the database:
-   ```bash
-   alembic upgrade head
-   ```
-
-5. Run the FastAPI server:
-   ```bash
-   uvicorn src.main:app --reload
-   ```
 
 ## Usage Instructions
 
-### Fetch Posts
-
-To fetch posts from the database, send a GET request to the `/posts` endpoint.
-
-Example:
-```bash
-curl -X GET "http://127.0.0.1:8000/posts"
-```
 
 ## Contribution Guidelines
 
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Make your changes.
-4. Ensure that your code passes the ruff checks and tests.
-5. Submit a pull request.
+Please submit an issue for feature requests before creating a pull-request.
+I want to keep this project as small as possible.
 
 ## Links
 - [https://github.com/nextcloud/news/blob/master/docs/api/api-v1-3.md](NextCloud News API Specification)
