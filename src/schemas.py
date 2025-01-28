@@ -20,16 +20,16 @@ class Post(PostBase):
 class FeedBase(BaseModel):
     url: str
     title: str
-    faviconLink: str
+    favicon_link: str
     added: int
-    nextUpdateTime: int
-    folderId: int
-    unreadCount: int
+    next_update_time: int
+    folder_id: int
+    unread_count: int
     ordering: int
     link: str
     pinned: bool
-    updateErrorCount: int
-    lastUpdateError: str
+    update_error_count: int
+    last_update_error: str
 
 
 class FeedCreate(FeedBase):
