@@ -1,12 +1,18 @@
 import pytest
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 from src import crud, schemas
-from src.database import Base, SessionLocal
+from src.database import Base
 
 
 @pytest.fixture
 def db():
-    db = SessionLocal()
+    engine = create_engine(
+        "sqlite:///:memory:", echo=True, connect_args={"check_same_thread": False}
+    )
+
+    session_maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = session_maker()
     Base.metadata.create_all(bind=db.get_bind())
     try:
         yield db

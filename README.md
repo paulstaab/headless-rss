@@ -62,6 +62,9 @@ curl -X GET "http://127.0.0.1:8000/posts"
 4. Ensure that your code passes the ruff checks and tests.
 5. Submit a pull request.
 
+## Links
+- [https://github.com/nextcloud/news/blob/master/docs/api/api-v1-3.md](NextCloud News API Specification)
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
