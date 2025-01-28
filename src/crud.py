@@ -23,16 +23,16 @@ def create_feed(db: Session, feed: schemas.FeedCreate) -> database.Feed:
     db_feed = database.Feed(
         url=feed.url,
         title=feed.title,
-        faviconLink=feed.faviconLink,
+        favicon_link=feed.favicon_link,
         added=feed.added,
-        nextUpdateTime=feed.nextUpdateTime,
-        folderId=feed.folderId,
-        unreadCount=feed.unreadCount,
+        next_update_time=feed.next_update_time,
+        folder_id=feed.folder_id,
+        unread_count=feed.unread_count,
         ordering=feed.ordering,
         link=feed.link,
         pinned=feed.pinned,
-        updateErrorCount=feed.updateErrorCount,
-        lastUpdateError=feed.lastUpdateError,
+        update_error_count=feed.update_error_count,
+        last_update_error=feed.last_update_error,
     )
     db.add(db_feed)
     db.commit()
