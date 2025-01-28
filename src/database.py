@@ -20,3 +20,21 @@ class Post(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str]
     content: Mapped[str]
+
+
+class Feed(Base):
+    __tablename__ = "feeds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str]
+    title: Mapped[str]
+    faviconLink: Mapped[str]
+    added: Mapped[int]
+    nextUpdateTime: Mapped[int]
+    folderId: Mapped[int]
+    unreadCount: Mapped[int]
+    ordering: Mapped[int]
+    link: Mapped[str]
+    pinned: Mapped[bool]
+    updateErrorCount: Mapped[int]
+    lastUpdateError: Mapped[str]
