@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 from src import database, feed
 from src.api.nextcloud_news import schema
@@ -13,10 +15,32 @@ def get_feeds() -> list[schema.Feed]:
     return [schema.Feed.model_validate(feed) for feed in feeds]
 
 
-@app.post("/feeds/", response_model=schema.Feed)
-def add_feed(input: schema.FeedCreate) -> schema.Feed:
+class FeedPostIn(BaseModel):
+    url: str
+    folder_id: int | None
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+class FeedPostOut(BaseModel):
+    feeds: list[schema.Feed]
+    newest_item_id: int | None
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@app.post("/feeds/", response_model=FeedPostOut)
+def add_feed(input: FeedPostIn):
     new_feed = feed.create(**input.model_dump())
     db = database.get_session()
     db.add(new_feed)
     db.commit()
-    return schema.Feed.model_validate(new_feed)
+    return {"feeds": get_feeds(), "newestItemId": None}
