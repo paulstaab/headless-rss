@@ -7,12 +7,11 @@ _engine: Engine | None = None
 _session_maker: sessionmaker | None = None
 
 
-def init(file: Path | None) -> None:
+def init(file: Path) -> None:
     global _engine
     global _session_maker
-    sqlalchemy_url = f"sqlite:///{file}" if file else "sqlite:///:memory:"
     _engine = create_engine(
-        url=sqlalchemy_url, echo=True, connect_args={"check_same_thread": False}
+        url=f"sqlite:///{file}", echo=True, connect_args={"check_same_thread": False}
     )
     _session_maker = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
@@ -40,14 +39,13 @@ class Feed(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     url: Mapped[str]
-    title: Mapped[str]
-    favicon_link: Mapped[str]
+    title: Mapped[str | None] = mapped_column(default=None)
+    favicon_link: Mapped[str | None] = mapped_column(default=None)
     added: Mapped[int]
-    next_update_time: Mapped[int]
-    folder_id: Mapped[int]
-    unread_count: Mapped[int]
-    ordering: Mapped[int]
-    link: Mapped[str]
-    pinned: Mapped[bool]
-    update_error_count: Mapped[int]
-    last_update_error: Mapped[str]
+    next_update_time: Mapped[int | None] = mapped_column(default=None)
+    folder_id: Mapped[int | None]
+    ordering: Mapped[int] = mapped_column(default=0)
+    link: Mapped[str | None] = mapped_column(default=None)
+    pinned: Mapped[bool] = mapped_column(default=False)
+    update_error_count: Mapped[int] = mapped_column(default=0)
+    last_update_error: Mapped[str | None] = mapped_column(default=None)

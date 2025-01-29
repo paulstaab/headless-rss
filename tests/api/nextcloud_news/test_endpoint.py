@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -12,7 +14,7 @@ def client() -> TestClient:
 
 @pytest.fixture
 def db():
-    database.init(file=None)
+    database.init(file=Path("test.db"))
     db = database.get_session()
     database.Base.metadata.create_all(bind=db.get_bind())
     yield db
@@ -21,28 +23,17 @@ def db():
 
 def test_get_feeds(db: Session, client: TestClient) -> None:
     # given
-    feed = database.Feed(
-        url="http://feeds.feedburner.com/oatmealfeed",
-        title="The Oatmeal - Comics, Quizzes, & Stories",
-        favicon_link="http://theoatmeal.com/favicon.ico",
-        added=1367063790,
-        next_update_time=2071387335,
-        folder_id=4,
-        unread_count=9,
-        ordering=0,
-        link="http://theoatmeal.com/",
-        pinned=True,
-        update_error_count=0,
-        last_update_error="",
-    )
-    db.add(feed)
-    db.commit()
 
     # when
+    response = client.post(
+        "/feeds/", json={"url": "http://feeds.feedburner.com/oatmealfeed", "folderId": None}
+    )
+    assert response.status_code == 200
     response = client.get("/feeds/")
+    assert response.status_code == 200
 
     # then
-    assert response.status_code == 200
+    feeds = response.json()
 
     # Assert feeds were retrieved with correct data
     assert len(feeds) == 1

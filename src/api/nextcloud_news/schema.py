@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
 class PostBase(BaseModel):
@@ -24,7 +25,7 @@ class Feed(BaseModel):
     favicon_link: str
     added: int
     next_update_time: int
-    folder_id: int
+    folder_id: int | None
     unread_count: int
     ordering: int
     link: str
@@ -33,3 +34,14 @@ class Feed(BaseModel):
     last_update_error: str
 
     model_config = {"from_attributes": True}
+
+
+class FeedCreate(BaseModel):
+    url: str
+    folder_id: int | None
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
