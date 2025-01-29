@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, ForeignKey, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 _engine: Engine | None = None
@@ -30,8 +30,26 @@ class Article(Base):
     __tablename__ = "article"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str]
-    content: Mapped[str]
+    title: Mapped[str | None] = mapped_column(default=None)
+    content: Mapped[str | None] = mapped_column(default=None)
+    author: Mapped[str | None] = mapped_column(default=None)
+    body: Mapped[str | None] = mapped_column(default=None)
+    content_hash: Mapped[str | None] = mapped_column(default=None)
+    enclosure_link: Mapped[str | None] = mapped_column(default=None)
+    enclosure_mime: Mapped[str | None] = mapped_column(default=None)
+    feed_id: Mapped[int] = mapped_column(ForeignKey("feed.id"))
+    fingerprint: Mapped[str | None] = mapped_column(default=None)
+    guid: Mapped[str]
+    guid_hash: Mapped[str]
+    last_modified: Mapped[str | None] = mapped_column(default="0")
+    media_description: Mapped[str | None] = mapped_column(default=None)
+    media_thumbnail: Mapped[str | None] = mapped_column(default=None)
+    pub_date: Mapped[int | None] = mapped_column(default=None)
+    rtl: Mapped[bool] = mapped_column(default=False)
+    starred: Mapped[bool] = mapped_column(default=False)
+    unread: Mapped[bool] = mapped_column(default=False)
+    updated_date: Mapped[str | None] = mapped_column(default=None)
+    url: Mapped[str | None] = mapped_column(default=None)
 
 
 class Feed(Base):
