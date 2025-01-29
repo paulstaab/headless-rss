@@ -1,7 +1,8 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
-import logging
 
 from src import database, feed
 from src.api.nextcloud_news import schema
@@ -51,7 +52,7 @@ def add_feed(input: FeedPostIn):
         new_feed = feed.create(**input.model_dump())
     except Exception as e:
         logger.error(f"Error parsing feed from URL {input.url}: {e}")
-        raise HTTPException(status_code=422, detail="Feed cannot be read")
+        raise HTTPException(status_code=422, detail="Feed cannot be read") from e
 
     db.add(new_feed)
     db.commit()
