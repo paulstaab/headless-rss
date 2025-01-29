@@ -78,3 +78,52 @@ def delete_feed(feed_id: int):
         raise HTTPException(status_code=404, detail="Feed not found")
     db.delete(feed)
     db.commit()
+
+
+class ItemGetOut(BaseModel):
+    items: list[schema.Article]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@app.get("/items/", response_model=ItemGetOut)
+def get_items(
+    batch_size: int = 10,
+    offset: int = 0,
+    type: int = 1,
+    id: int = 0,
+    get_read: bool = True,
+    oldest_first: bool = False,
+) -> ItemGetOut:
+    db = database.get_session()
+    query = db.query(database.Article)
+
+    if not get_read:
+        query = query.filter(database.Article.unread == True)
+
+    if offset > 0:
+        query = query.filter(database.Article.id <= offset)
+
+    if type == 0:
+        query = query.filter(database.Article.feed_id == id)
+    elif type == 1:
+        query = query.filter(database.Article.feed_id == id)
+    elif type == 2:
+        query = query.filter(database.Article.starred == True)
+    elif type == 3:
+        pass  # No additional filter for type 3 (All)
+
+    if oldest_first:
+        query = query.order_by(database.Article.id.asc())
+    else:
+        query = query.order_by(database.Article.id.desc())
+
+    if batch_size != -1:
+        query = query.limit(batch_size)
+
+    items = query.all()
+    return ItemGetOut(items=[schema.Article.model_validate(item) for item in items])
