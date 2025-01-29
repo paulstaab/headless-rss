@@ -11,11 +11,21 @@ app = FastAPI()
 logger = logging.getLogger(__name__)
 
 
-@app.get("/feeds/", response_model=list[schema.Feed])
-def get_feeds() -> list[schema.Feed]:
+class FeedGetOut(BaseModel):
+    feeds: list[schema.Feed]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@app.get("/feeds/", response_model=FeedGetOut)
+def get_feeds() -> FeedGetOut:
     db = database.get_session()
     feeds = db.query(database.Feed).all()
-    return [schema.Feed.model_validate(feed) for feed in feeds]
+    return FeedGetOut(feeds=[schema.Feed.model_validate(feed) for feed in feeds])
 
 
 class FeedPostIn(BaseModel):
@@ -57,7 +67,7 @@ def add_feed(input: FeedPostIn):
     db.add(new_feed)
     db.commit()
     db.refresh(new_feed)  # Refresh to get the ID of the newly created feed
-    return {"feeds": get_feeds(), "newestItemId": new_feed.id}
+    return {"feeds": get_feeds().feeds, "newestItemId": new_feed.id}
 
 
 @app.delete("/feeds/{feed_id}")
