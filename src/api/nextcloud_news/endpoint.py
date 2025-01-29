@@ -43,4 +43,5 @@ def add_feed(input: FeedPostIn):
     db = database.get_session()
     db.add(new_feed)
     db.commit()
-    return {"feeds": get_feeds(), "newestItemId": None}
+    db.refresh(new_feed)  # Refresh to get the ID of the newly created feed
+    return {"feeds": get_feeds(), "newestItemId": new_feed.id}
