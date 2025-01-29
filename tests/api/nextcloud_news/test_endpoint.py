@@ -74,7 +74,7 @@ def test_delete_feed(client: TestClient) -> None:
     # then
     assert response.status_code == 200
     response = client.get("/feeds/")
-    feeds = response.json()
+    feeds = response.json()["feeds"]
     assert len(feeds) == 0
 
 
