@@ -38,7 +38,7 @@ class Feed(Base):
     __tablename__ = "feed"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    url: Mapped[str]
+    url: Mapped[str] = mapped_column(unique=True)
     title: Mapped[str | None] = mapped_column(default=None)
     favicon_link: Mapped[str | None] = mapped_column(default=None)
     added: Mapped[int]
