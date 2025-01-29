@@ -58,3 +58,13 @@ def add_feed(input: FeedPostIn):
     db.commit()
     db.refresh(new_feed)  # Refresh to get the ID of the newly created feed
     return {"feeds": get_feeds(), "newestItemId": new_feed.id}
+
+
+@app.delete("/feeds/{feed_id}")
+def delete_feed(feed_id: int):
+    db = database.get_session()
+    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    db.delete(feed)
+    db.commit()
