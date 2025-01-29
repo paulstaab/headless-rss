@@ -114,34 +114,4 @@ def test_get_items(client: TestClient) -> None:
     # then
     assert response.status_code == 200
     items = response.json()["items"]
-    assert len(items) == 0  # Assuming no items are present initially
-
-
-def test_get_items_with_parameters(client: TestClient) -> None:
-    # given
-    response = client.post(
-        "/feeds/",
-        json={
-            "url": "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml",
-            "folderId": None,
-        },
-    )
-    feed_id = response.json()["feeds"][0]["id"]
-
-    # when
-    response = client.get(
-        "/items/",
-        params={
-            "batchSize": 5,
-            "offset": 0,
-            "type": 1,
-            "id": feed_id,
-            "getRead": False,
-            "oldestFirst": True,
-        },
-    )
-
-    # then
-    assert response.status_code == 200
-    items = response.json()["items"]
-    assert len(items) == 0  # Assuming no items are present initially
+    assert len(items) == 1

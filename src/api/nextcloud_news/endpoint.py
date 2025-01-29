@@ -66,7 +66,10 @@ def add_feed(input: FeedPostIn):
 
     db.add(new_feed)
     db.commit()
-    db.refresh(new_feed)  # Refresh to get the ID of the newly created feed
+    db.refresh(new_feed)
+
+    feed.update(new_feed.id)
+
     return {"feeds": get_feeds().feeds, "newestItemId": new_feed.id}
 
 
@@ -103,17 +106,15 @@ def get_items(
     query = db.query(database.Article)
 
     if not get_read:
-        query = query.filter(database.Article.unread == True)
+        query = query.filter(database.Article.unread)
 
     if offset > 0:
         query = query.filter(database.Article.id <= offset)
 
-    if type == 0:
-        query = query.filter(database.Article.feed_id == id)
-    elif type == 1:
+    if type == 0 or type == 1:
         query = query.filter(database.Article.feed_id == id)
     elif type == 2:
-        query = query.filter(database.Article.starred == True)
+        query = query.filter(database.Article.starred)
     elif type == 3:
         pass  # No additional filter for type 3 (All)
 
