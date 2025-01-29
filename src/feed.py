@@ -18,4 +18,7 @@ def create(url: str, folder_id: int | None = None) -> database.Feed:
 
 
 def _parse(url: str):
-    return feedparser.parse(url)
+    parsed_feed = feedparser.parse(url)
+    if parsed_feed.bozo:
+        raise ValueError(f"Error parsing feed: {parsed_feed.bozo_exception}")
+    return parsed_feed
