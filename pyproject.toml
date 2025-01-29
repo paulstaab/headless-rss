@@ -38,3 +38,7 @@ select = [
     "SIM", # flake8-simplify
     "TCH", # flake8-type-checking
 ]
+
+[[tool.mypy.overrides]]
+module = ["feedparser.*"]
+follow_untyped_imports = true
