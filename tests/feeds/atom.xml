@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:base="http://example.org/" xml:lang="en">
+  <title type="text">Test Atom Feed</title>
+  <subtitle type="html">For Tests</subtitle>
+  <link rel="alternate" type="html" href="/"/>
+  <link rel="self" type="application/atom+xml" href="http://www.example.org/atom.xml"/>
+  <rights type="html">Public Domain</rights>
+  <generator uri="http://example.org/generator/" version="4.0">Sample Toolkit</generator>
+  <id>tag:feedparser.org,2024-01-30:/tests/atom.xml</id>
+  <updated>2024-01-30T12:34:56Z</updated>
+  <entry>
+    <title>First entry</title>
+    <link rel="alternate" href="/entry/3"/>
+    <link rel="related" type="text/html" href="http://search.example.com/"/>
+    <link rel="via" type="text/html" href="http://toby.example.com/examples/atom10"/>
+    <link rel="enclosure" type="video/mpeg4" href="http://www.example.com/movie.mp4" length="42301"/>
+    <id>tag:feedparser.org,2024-01-30:/tests/atom.xml:3</id>
+    <published>2024-01-29T12:34:56Z</published>
+    <updated>2024-01-30T12:34:56Z</updated>
+    <author>
+      <name>Test Author</name>
+      <uri>http://example.org/author</uri>
+      <email>author@example.org</email>
+    </author>
+    <contributor>
+      <name>Test Contributor 1</name>
+      <uri>http://example.org/contributor1</uri>
+      <email>con1@example.org</email>
+    </contributor>
+    <contributor>
+      <name>Test Contributor 2</name>
+      <uri>http://example.org/contributor2</uri>
+      <email>con2@example.org</email>
+    </contributor>
+    <summary type="text">Watch out for nasty tricks</summary>
+    <content type="xhtml" xml:base="http://example.org/entry/3" xml:lang="en-US">
+      <div xmlns="http://www.w3.org/1999/xhtml">Watch out for <span style="background: url(javascript:window.location='http://example.org/')"> nasty tricks</span></div>
+    </content>
+  </entry>
+</feed>
