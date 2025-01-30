@@ -1,12 +1,12 @@
 from fastapi.testclient import TestClient
 
 
-def test_feed_creation(client: TestClient) -> None:
+def test_feed_creation(client: TestClient, feed_server) -> None:
     # when
     response = client.post(
         "/feeds/",
         json={
-            "url": "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml",
+            "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
         },
     )
@@ -14,19 +14,19 @@ def test_feed_creation(client: TestClient) -> None:
     assert response.status_code == 200
     feeds = response.json()["feeds"]
     assert len(feeds) == 1
-    assert feeds[0]["url"] == "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml"
-    assert feeds[0]["title"] == "Sample Feed"
+    assert feeds[0]["url"] == feed_server.url_for("/atom.xml")
+    assert feeds[0]["title"] == "Test Atom Feed"
     assert feeds[0]["link"] == "http://example.org/"
     assert feeds[0]["updateErrorCount"] == 0
     assert response.json()["newestItemId"] == feeds[0]["id"]
 
 
-def test_feed_already_exists(client: TestClient) -> None:
+def test_feed_already_exists(client: TestClient, feed_server) -> None:
     # given
     client.post(
         "/feeds/",
         json={
-            "url": "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml",
+            "url": f"{feed_server.url_for('/atom.xml')}",
             "folderId": None,
         },
     )
@@ -34,7 +34,7 @@ def test_feed_already_exists(client: TestClient) -> None:
     response = client.post(
         "/feeds/",
         json={
-            "url": "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml",
+            "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
         },
     )
@@ -43,12 +43,12 @@ def test_feed_already_exists(client: TestClient) -> None:
     assert response.json()["detail"] == "Feed already exists"
 
 
-def test_feed_cannot_be_read(client: TestClient) -> None:
+def test_feed_cannot_be_read(client: TestClient, feed_server) -> None:
     # when
     response = client.post(
         "/feeds/",
         json={
-            "url": "https://invalid-url.com",
+            "url": feed_server.url_for("/non-existant.xml"),
             "folderId": None,
         },
     )
@@ -57,12 +57,12 @@ def test_feed_cannot_be_read(client: TestClient) -> None:
     assert response.json()["detail"] == "Feed cannot be read"
 
 
-def test_delete_feed(client: TestClient) -> None:
+def test_delete_feed(client: TestClient, feed_server) -> None:
     # given
     response = client.post(
         "/feeds/",
         json={
-            "url": "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml",
+            "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
         },
     )
@@ -87,12 +87,12 @@ def test_delete_non_existent_feed(client: TestClient) -> None:
     assert response.json()["detail"] == "Feed not found"
 
 
-def test_get_items(client: TestClient) -> None:
+def test_get_items(client: TestClient, feed_server) -> None:
     # given
     response = client.post(
         "/feeds/",
         json={
-            "url": "https://feedparser.readthedocs.io/en/latest/examples/atom10.xml",
+            "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
         },
     )
