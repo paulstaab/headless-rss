@@ -52,3 +52,23 @@ class Article(BaseModel):
         populate_by_name=True,
         from_attributes=True,
     )
+
+
+class FolderGetOut(BaseModel):
+    folders: list[dict]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+class FolderPostIn(BaseModel):
+    name: str
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
