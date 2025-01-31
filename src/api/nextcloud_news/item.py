@@ -3,7 +3,7 @@
 import enum
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -100,3 +100,117 @@ def get_items(
 
     items = query.all()
     return ItemGetOut(items=[Article.model_validate(item) for item in items])
+
+
+@router.get("/updated", response_model=ItemGetOut)
+def get_updated_items(last_modified: int, type: int, id: int) -> ItemGetOut:
+    select_method = FeedSelectionMethod(type)
+    db = database.get_session()
+    query = db.query(database.Article).filter(database.Article.last_modified >= last_modified)
+
+    if select_method == FeedSelectionMethod.FEED:
+        query = query.filter(database.Article.feed_id == id)
+    elif select_method == FeedSelectionMethod.FOLDER:
+        query = query.join(database.Feed).filter(database.Feed.folder_id == id)
+    elif select_method == FeedSelectionMethod.STARRED:
+        query = query.filter(database.Article.starred)
+    elif select_method == FeedSelectionMethod.ALL:
+        pass
+
+    items = query.all()
+    return ItemGetOut(items=[Article.model_validate(item) for item in items])
+
+
+@router.post("/{item_id}/read")
+def mark_item_as_read(item_id: int):
+    db = database.get_session()
+    item = db.query(database.Article).filter(database.Article.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item.unread = False
+    db.commit()
+
+
+@router.post("/read/multiple")
+def mark_multiple_items_as_read(item_ids: list[int]):
+    db = database.get_session()
+    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    for item in items:
+        item.unread = False
+    db.commit()
+
+
+@router.post("/{item_id}/unread")
+def mark_item_as_unread(item_id: int):
+    db = database.get_session()
+    item = db.query(database.Article).filter(database.Article.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item.unread = True
+    db.commit()
+
+
+@router.post("/unread/multiple")
+def mark_multiple_items_as_unread(item_ids: list[int]):
+    db = database.get_session()
+    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    for item in items:
+        item.unread = True
+    db.commit()
+
+
+@router.post("/{item_id}/star")
+def mark_item_as_starred(item_id: int):
+    db = database.get_session()
+    item = db.query(database.Article).filter(database.Article.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item.starred = True
+    db.commit()
+
+
+@router.post("/star/multiple")
+def mark_multiple_items_as_starred(item_ids: list[int]):
+    db = database.get_session()
+    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    for item in items:
+        item.starred = True
+    db.commit()
+
+
+@router.post("/{item_id}/unstar")
+def mark_item_as_unstarred(item_id: int):
+    db = database.get_session()
+    item = db.query(database.Article).filter(database.Article.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item.starred = False
+    db.commit()
+
+
+@router.post("/unstar/multiple")
+def mark_multiple_items_as_unstarred(item_ids: list[int]):
+    db = database.get_session()
+    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    for item in items:
+        item.starred = False
+    db.commit()
+
+
+class MarkAllItemsReadIn(BaseModel):
+    newest_item_id: int
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@router.post("/read")
+def mark_all_items_as_read(input: MarkAllItemsReadIn):
+    db = database.get_session()
+    items = db.query(database.Article).filter(database.Article.id <= input.newest_item_id).all()
+    for item in items:
+        item.unread = False
+    db.commit()
