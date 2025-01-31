@@ -64,22 +64,22 @@ class FeedSelectionMethod(enum.Enum):
 
 @router.get("/", response_model=ItemGetOut)
 def get_items(
-    batch_size: int = 10,
+    batchSize: int = 10,  # noqa: N803
     offset: int = 0,
     type: int = 1,
     id: int = 0,
-    get_read: bool = True,
-    oldest_first: bool = False,
+    getRead: bool = True,  # noqa: N803
+    oldestFirst: bool = False,  # noqa: N803
 ) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
     db = database.get_session()
     query = db.query(database.Article)
 
-    if not get_read:
+    if not getRead:
         query = query.filter(database.Article.unread)
 
     if offset > 0:
-        query = query.filter(database.Article.id <= offset)
+        query = query.filter(database.Article.id > offset)
 
     if select_method == FeedSelectionMethod.FEED:
         query = query.filter(database.Article.feed_id == id)
@@ -90,23 +90,27 @@ def get_items(
     elif select_method == FeedSelectionMethod.ALL:
         pass
 
-    if oldest_first:
+    if oldestFirst:
         query = query.order_by(database.Article.id.asc())
     else:
         query = query.order_by(database.Article.id.desc())
 
-    if batch_size != -1:
-        query = query.limit(batch_size)
+    if batchSize != -1:
+        query = query.limit(batchSize)
 
     items = query.all()
     return ItemGetOut(items=[Article.model_validate(item) for item in items])
 
 
 @router.get("/updated", response_model=ItemGetOut)
-def get_updated_items(last_modified: int, type: int, id: int) -> ItemGetOut:
+def get_updated_items(
+    lastModified: int,  # noqa: N803
+    type: int,
+    id: int,
+) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
     db = database.get_session()
-    query = db.query(database.Article).filter(database.Article.last_modified >= last_modified)
+    query = db.query(database.Article).filter(database.Article.last_modified >= lastModified)
 
     if select_method == FeedSelectionMethod.FEED:
         query = query.filter(database.Article.feed_id == id)
@@ -131,10 +135,20 @@ def mark_item_as_read(item_id: int):
     db.commit()
 
 
+class ItemListIn(BaseModel):
+    item_ids: list[int]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
 @router.post("/read/multiple")
-def mark_multiple_items_as_read(item_ids: list[int]):
+def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
         item.unread = False
     db.commit()
@@ -151,9 +165,9 @@ def mark_item_as_unread(item_id: int):
 
 
 @router.post("/unread/multiple")
-def mark_multiple_items_as_unread(item_ids: list[int]):
+def mark_multiple_items_as_unread(input: ItemListIn):
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
         item.unread = True
     db.commit()
@@ -170,9 +184,9 @@ def mark_item_as_starred(item_id: int):
 
 
 @router.post("/star/multiple")
-def mark_multiple_items_as_starred(item_ids: list[int]):
+def mark_multiple_items_as_starred(input: ItemListIn):
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
         item.starred = True
     db.commit()
@@ -189,9 +203,9 @@ def mark_item_as_unstarred(item_id: int):
 
 
 @router.post("/unstar/multiple")
-def mark_multiple_items_as_unstarred(item_ids: list[int]):
+def mark_multiple_items_as_unstarred(input: ItemListIn):
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
         item.starred = False
     db.commit()

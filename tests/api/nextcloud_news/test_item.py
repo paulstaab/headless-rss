@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from src.feed import now
 
 
 def test_get_items(client: TestClient, feed_server) -> None:
@@ -33,6 +34,7 @@ def test_get_items(client: TestClient, feed_server) -> None:
 
 def test_get_updated_items(client: TestClient, feed_server) -> None:
     # given
+    timestamp = now()
     response = client.post(
         "/feeds/",
         json={
@@ -46,8 +48,8 @@ def test_get_updated_items(client: TestClient, feed_server) -> None:
     response = client.get(
         "/items/updated",
         params={
-            "lastModified": 0,
-            "type": 1,
+            "lastModified": timestamp,
+            "type": 0,
             "id": feed_id,
         },
     )
@@ -101,7 +103,7 @@ def test_mark_multiple_items_as_read(client: TestClient, feed_server) -> None:
 
     # then
     assert response.status_code == 200
-    response = client.get("/items/", params={"type": 1, "id": item_id})
+    response = client.get("/items/", params={"type": 3})
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False

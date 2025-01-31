@@ -9,6 +9,10 @@ from src import database
 logger = logging.getLogger(__name__)
 
 
+def now() -> int:
+    return int(time.time())
+
+
 def create(url: str, folder_id: int | None = None) -> database.Feed:
     logger.info(f"Creating feed for URL: {url}")
     parsed_feed = _parse(url)
@@ -19,7 +23,7 @@ def create(url: str, folder_id: int | None = None) -> database.Feed:
         favicon_link=parsed_feed.feed.get("favicon"),
         link=parsed_feed.feed.get("link"),
         folder_id=folder_id,
-        added=int(time.time()),
+        added=now(),
     )
 
 
@@ -54,7 +58,7 @@ def _create_article(article, feed_id: int) -> database.Article:
         fingerprint=article.get("fingerprint"),
         guid=article["id"],
         guid_hash=md5(article["id"].encode()).hexdigest(),
-        last_modified=article.get("last_modified"),
+        last_modified=now(),
         media_description=article.get("media_description"),
         media_thumbnail=article.get("media_thumbnail"),
         pub_date=article.get("pub_date"),

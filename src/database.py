@@ -41,7 +41,7 @@ class Article(Base):
     fingerprint: Mapped[str | None] = mapped_column(default=None)
     guid: Mapped[str]
     guid_hash: Mapped[str]
-    last_modified: Mapped[str | None] = mapped_column(default="0")
+    last_modified: Mapped[str]
     media_description: Mapped[str | None] = mapped_column(default=None)
     media_thumbnail: Mapped[str | None] = mapped_column(default=None)
     pub_date: Mapped[int | None] = mapped_column(default=None)
