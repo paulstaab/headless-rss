@@ -1,5 +1,6 @@
 """API Endpoints under /feeds/"""
 
+import enum
 import logging
 
 from fastapi import APIRouter
@@ -54,6 +55,13 @@ class ItemGetOut(BaseModel):
     )
 
 
+class FeedSelectionMethod(enum.Enum):
+    FEED = 0
+    FOLDER = 1
+    STARRED = 2
+    ALL = 3
+
+
 @router.get("/", response_model=ItemGetOut)
 def get_items(
     batch_size: int = 10,
@@ -63,6 +71,7 @@ def get_items(
     get_read: bool = True,
     oldest_first: bool = False,
 ) -> ItemGetOut:
+    select_method = FeedSelectionMethod(type)
     db = database.get_session()
     query = db.query(database.Article)
 
@@ -72,12 +81,14 @@ def get_items(
     if offset > 0:
         query = query.filter(database.Article.id <= offset)
 
-    if type == 0 or type == 1:
+    if select_method == FeedSelectionMethod.FEED:
         query = query.filter(database.Article.feed_id == id)
-    elif type == 2:
+    elif select_method == FeedSelectionMethod.FOLDER:
+        query = query.join(database.Feed).filter(database.Feed.folder_id == id)
+    elif select_method == FeedSelectionMethod.STARRED:
         query = query.filter(database.Article.starred)
-    elif type == 3:
-        pass  # No additional filter for type 3 (All)
+    elif select_method == FeedSelectionMethod.ALL:
+        pass
 
     if oldest_first:
         query = query.order_by(database.Article.id.asc())
