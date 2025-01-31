@@ -194,7 +194,7 @@ def test_mark_items_read(client: TestClient, feed_server) -> None:
 
     # then
     assert response.status_code == 200
-    response = client.get("/items/")
+    response = client.get("/items/", params={"type": 1, "id": folder_id})
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False
