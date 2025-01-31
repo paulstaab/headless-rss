@@ -83,8 +83,24 @@ def add_feed(input: FeedPostIn):
         logger.error(f"Feed with URL {input.url} already exists.")
         raise HTTPException(status_code=409, detail="Feed already exists")
 
+    if input.folder_id is None:
+        folder = db.query(database.Folder).filter(database.Folder.name == None).first()  # noqa: E711
+        if not folder:
+            logger.info("Creating default folder")
+            folder = database.Folder(name=None)
+            db.add(folder)
+            db.commit()
+            db.refresh(folder)
+    else:
+        folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
+        if not folder:
+            logger.error(f"Folder with ID {input.folder_id} does not exist.")
+            raise HTTPException(
+                status_code=422, detail=f"Folder with ID {input.folder_id} does not exist"
+            )
+
     try:
-        new_feed = feed.create(**input.model_dump())
+        new_feed = feed.create(url=input.url, folder_id=folder.id)
     except Exception as e:
         logger.error(f"Error parsing feed from URL {input.url}: {e}")
         raise HTTPException(status_code=422, detail="Feed cannot be read") from e

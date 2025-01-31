@@ -137,9 +137,13 @@ def mark_items_read(folder_id: int, input: MarkItemsReadIn):
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
 
-    items = db.query(database.Article).join(database.Feed).filter(
-        database.Feed.folder_id == folder_id).filter(
-        database.Article.id <= input.newest_item_id).all()
+    items = (
+        db.query(database.Article)
+        .join(database.Feed)
+        .filter(database.Feed.folder_id == folder_id)
+        .filter(database.Article.id <= input.newest_item_id)
+        .all()
+    )
     for item in items:
         item.unread = False
     db.commit()
