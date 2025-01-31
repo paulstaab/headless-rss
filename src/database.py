@@ -67,3 +67,10 @@ class Feed(Base):
     pinned: Mapped[bool] = mapped_column(default=False)
     update_error_count: Mapped[int] = mapped_column(default=0)
     last_update_error: Mapped[str | None] = mapped_column(default=None)
+
+
+class Folder(Base):
+    __tablename__ = "folder"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
