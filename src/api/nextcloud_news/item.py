@@ -64,7 +64,7 @@ class FeedSelectionMethod(enum.Enum):
 
 @router.get("", response_model=ItemGetOut)
 def get_items(
-    batchSize: int = 10,  # noqa: N803
+    batchSize: int = -1,  # noqa: N803
     offset: int = 0,
     type: int = 1,
     id: int = 0,
@@ -80,7 +80,7 @@ def get_items(
         query = query.filter(database.Article.unread)
 
     if offset > 0:
-        query = query.filter(database.Article.id > offset)
+        query = query.filter(database.Article.id <= offset)
 
     if select_method == FeedSelectionMethod.FEED:
         query = query.filter(database.Article.feed_id == id)
@@ -93,7 +93,7 @@ def get_items(
 
     query = query.order_by(database.Article.id.asc() if oldestFirst else database.Article.id.desc())
 
-    if batchSize != -1:
+    if batchSize > 0:
         query = query.limit(batchSize)
 
     items = query.all()
@@ -147,6 +147,7 @@ class ItemListIn(BaseModel):
 
 @router.put("/read/multiple")
 def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
+    logger.info(f"Marking multiple items as read: {input.item_ids}")
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
@@ -155,7 +156,8 @@ def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
 
 
 @router.put("/{item_id}/unread")
-def mark_item_as_unread(item_id: int):
+def mark_item_as_unread(item_id: int) -> None:
+    logger.info(f"Marking item {item_id} as unread")
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
     if not item:
@@ -165,7 +167,8 @@ def mark_item_as_unread(item_id: int):
 
 
 @router.put("/unread/multiple")
-def mark_multiple_items_as_unread(input: ItemListIn):
+def mark_multiple_items_as_unread(input: ItemListIn) -> None:
+    logger.info(f"Marking multiple items as unread: {input.item_ids}")
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
@@ -174,7 +177,8 @@ def mark_multiple_items_as_unread(input: ItemListIn):
 
 
 @router.put("/{item_id}/star")
-def mark_item_as_starred(item_id: int):
+def mark_item_as_starred(item_id: int) -> None:
+    logger.info(f"Marking item {item_id} as starred")
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
     if not item:
@@ -184,7 +188,8 @@ def mark_item_as_starred(item_id: int):
 
 
 @router.put("/star/multiple")
-def mark_multiple_items_as_starred(input: ItemListIn):
+def mark_multiple_items_as_starred(input: ItemListIn) -> None:
+    logger.info(f"Marking multiple items as starred: {input.item_ids}")
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
@@ -193,7 +198,8 @@ def mark_multiple_items_as_starred(input: ItemListIn):
 
 
 @router.put("/{item_id}/unstar")
-def mark_item_as_unstarred(item_id: int):
+def mark_item_as_unstarred(item_id: int) -> None:
+    logger.info(f"Marking item {item_id} as unstarred")
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
     if not item:
@@ -203,7 +209,8 @@ def mark_item_as_unstarred(item_id: int):
 
 
 @router.put("/unstar/multiple")
-def mark_multiple_items_as_unstarred(input: ItemListIn):
+def mark_multiple_items_as_unstarred(input: ItemListIn) -> None:
+    logger.info(f"Marking multiple items as unstarred: {input.item_ids}")
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
     for item in items:
@@ -223,6 +230,7 @@ class MarkAllItemsReadIn(BaseModel):
 
 @router.put("/read")
 def mark_all_items_as_read(input: MarkAllItemsReadIn):
+    logger.info(f"Marking all items as read until {input.newest_item_id}")
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id <= input.newest_item_id).all()
     for item in items:
