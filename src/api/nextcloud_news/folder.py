@@ -31,7 +31,7 @@ class FolderGetOut(BaseModel):
     )
 
 
-@router.get("/", response_model=FolderGetOut)
+@router.get("", response_model=FolderGetOut)
 def get_folders() -> FolderGetOut:
     db = database.get_session()
     folders = db.query(database.Folder).filter(database.Folder.id > 0).all()
@@ -58,7 +58,7 @@ class FolderPostOut(BaseModel):
     )
 
 
-@router.post("/", response_model=FolderPostOut)
+@router.post("", response_model=FolderPostOut)
 def create_folder(input: FolderPostIn):
     db = database.get_session()
     existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
