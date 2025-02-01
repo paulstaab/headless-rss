@@ -1,13 +1,16 @@
+from pathlib import Path
+
 import click
 
-from src.feed import update_all
+from src import database, feed
 
 
 @click.command()
-@click.argument("command", required=True, help="Command to run")
+@click.argument("command", required=True)
 def cli(command):
+    database.init(Path("data/headless-rss.sqlite3"))
     if command == "update":
-        update_all()
+        feed.update_all()
 
 
 if __name__ == "__main__":

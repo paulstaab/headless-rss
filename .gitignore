@@ -169,4 +169,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-test.db
+
+# Custom files for the project
+*.sqlite3
