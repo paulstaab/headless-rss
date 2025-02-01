@@ -70,9 +70,13 @@ def get_items(
     id: int = 0,
     getRead: bool = True,  # noqa: N803
     oldestFirst: bool = False,  # noqa: N803
+    lastModified: int = 0,  # noqa: N803  # not official supported, by used by Fiery Feeds
 ) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
-    logger.info(f"Getting items for {select_method} = {id} ({batchSize=}, {offset=}, {getRead=}, {oldestFirst=})")
+    logger.info(
+        f"Getting items for {select_method} = {id} "
+        f"({batchSize=}, {offset=}, {lastModified=}, {getRead=}, {oldestFirst=})"
+    )
     db = database.get_session()
     query = db.query(database.Article)
 
@@ -81,6 +85,9 @@ def get_items(
 
     if offset > 0:
         query = query.filter(database.Article.id <= offset)
+
+    if lastModified > 0:
+        query = query.filter(database.Article.last_modified >= lastModified)
 
     if select_method == FeedSelectionMethod.FEED:
         query = query.filter(database.Article.feed_id == id)
