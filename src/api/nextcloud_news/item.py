@@ -2,6 +2,7 @@
 
 import enum
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -28,14 +29,14 @@ class Article(BaseModel):
     fingerprint: str | None
     guid: str
     guid_hash: str
-    last_modified: str | None
+    last_modified: int
     media_description: str | None
     media_thumbnail: str | None
     pub_date: int | None
     rtl: bool
     starred: bool
     unread: bool
-    updated_date: str | None
+    updated_date: int | None
     url: str | None
 
     model_config = ConfigDict(
@@ -70,7 +71,7 @@ def get_items(
     id: int = 0,
     getRead: bool = True,  # noqa: N803
     oldestFirst: bool = False,  # noqa: N803
-    lastModified: int = 0,  # noqa: N803  # not official supported, by used by Fiery Feeds
+    lastModified: int = 0,  # noqa: N803
 ) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
     logger.info(
@@ -141,6 +142,7 @@ def mark_item_as_read(item_id: int):
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     item.unread = False
+    item.last_modified = int(time.time())
     db.commit()
 
 
@@ -155,12 +157,13 @@ class ItemIDListIn(BaseModel):
 
 
 @router.put("/read/multiple")
-def mark_multiple_items_as_read(input: ItemIDListIn) -> None:  # noqa: N803
+def mark_multiple_items_as_read(input: ItemIDListIn) -> None:
     logger.info(f"Marking multiple items as read: {input.items}")
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.unread = False
+        item.last_modified = int(time.time())
     db.commit()
 
 
@@ -172,6 +175,7 @@ def mark_item_as_unread(item_id: int) -> None:
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     item.unread = True
+    item.last_modified = int(time.time())
     db.commit()
 
 
@@ -182,6 +186,7 @@ def mark_multiple_items_as_unread(input: ItemIDListIn) -> None:
     items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.unread = True
+        item.last_modified = int(time.time())
     db.commit()
 
 
@@ -197,6 +202,7 @@ def mark_item_as_starred(feedId: int, guidHash: str) -> None:  # noqa: N803
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     item.starred = True
+    item.last_modified = int(time.time())
     db.commit()
 
 
@@ -234,6 +240,7 @@ def mark_multiple_items_as_starred(input: ItemGuidListIn) -> None:
         if not article:
             raise HTTPException(status_code=404, detail="Item not found")
         article.starred = True
+        article.last_modified = int(time.time())
     db.commit()
 
 
@@ -249,6 +256,7 @@ def mark_item_as_unstarred(feedId: int, guidHash: str) -> None:  # noqa: N803
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     item.starred = False
+    item.last_modified = int(time.time())
     db.commit()
 
 
@@ -265,6 +273,7 @@ def mark_multiple_items_as_unstarred(input: ItemGuidListIn) -> None:
         if not article:
             raise HTTPException(status_code=404, detail="Item not found")
         article.starred = False
+        article.last_modified = int(time.time())
     db.commit()
 
 
@@ -285,4 +294,5 @@ def mark_all_items_as_read(input: MarkAllItemsReadIn):
     items = db.query(database.Article).filter(database.Article.id <= input.newest_item_id).all()
     for item in items:
         item.unread = False
+        item.last_modified = int(time.time())
     db.commit()
