@@ -15,7 +15,6 @@ if default_handler := logging.getHandlerByName("default"):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.getLogger("src").setLevel(logging.INFO)
     database.init(Path("data/headless-rss.sqlite3"))
     yield
 
