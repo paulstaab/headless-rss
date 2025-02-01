@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 def test_get_folders(client: TestClient) -> None:
     # when
-    response = client.get("/folders/")
+    response = client.get("/folders")
     # then
     assert response.status_code == 200
     folders = response.json()["folders"]
@@ -13,14 +13,14 @@ def test_get_folders(client: TestClient) -> None:
 def test_get_default_folder(client: TestClient, feed_server) -> None:
     # given
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
         },
     )
     # when
-    response = client.get("/folders/")
+    response = client.get("/folders")
     # then
     assert response.status_code == 200
     assert response.json()["folders"] == []
@@ -29,7 +29,7 @@ def test_get_default_folder(client: TestClient, feed_server) -> None:
 def test_create_folder(client: TestClient) -> None:
     # when
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
@@ -44,14 +44,14 @@ def test_create_folder(client: TestClient) -> None:
 def test_create_folder_already_exists(client: TestClient) -> None:
     # given
     client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
     )
     # when
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
@@ -64,7 +64,7 @@ def test_create_folder_already_exists(client: TestClient) -> None:
 def test_create_folder_invalid_name(client: TestClient) -> None:
     # when
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "",
         },
@@ -77,7 +77,7 @@ def test_create_folder_invalid_name(client: TestClient) -> None:
 def test_delete_folder(client: TestClient) -> None:
     # given
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
@@ -89,7 +89,7 @@ def test_delete_folder(client: TestClient) -> None:
 
     # then
     assert response.status_code == 200
-    response = client.get("/folders/")
+    response = client.get("/folders")
     folders = response.json()["folders"]
     assert len(folders) == 0
 
@@ -106,7 +106,7 @@ def test_delete_non_existent_folder(client: TestClient) -> None:
 def test_rename_folder(client: TestClient) -> None:
     # given
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
@@ -123,7 +123,7 @@ def test_rename_folder(client: TestClient) -> None:
 
     # then
     assert response.status_code == 200
-    response = client.get("/folders/")
+    response = client.get("/folders")
     folders = response.json()["folders"]
     assert len(folders) == 1
     assert folders[0]["name"] == "News"
@@ -132,18 +132,18 @@ def test_rename_folder(client: TestClient) -> None:
 def test_rename_folder_already_exists(client: TestClient) -> None:
     # given
     client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
     )
     client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "News",
         },
     )
-    folder_id = client.get("/folders/").json()["folders"][0]["id"]
+    folder_id = client.get("/folders").json()["folders"][0]["id"]
 
     # when
     response = client.put(
@@ -161,7 +161,7 @@ def test_rename_folder_already_exists(client: TestClient) -> None:
 def test_rename_folder_invalid_name(client: TestClient) -> None:
     # given
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
@@ -184,7 +184,7 @@ def test_rename_folder_invalid_name(client: TestClient) -> None:
 def test_mark_items_read(client: TestClient, feed_server) -> None:
     # given
     response = client.post(
-        "/folders/",
+        "/folders",
         json={
             "name": "Media",
         },
@@ -192,7 +192,7 @@ def test_mark_items_read(client: TestClient, feed_server) -> None:
     folder_id = response.json()["folders"][0]["id"]
 
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/atom.xml"),
             "folderId": folder_id,
@@ -210,7 +210,7 @@ def test_mark_items_read(client: TestClient, feed_server) -> None:
 
     # then
     assert response.status_code == 200
-    response = client.get("/items/", params={"type": 1, "id": folder_id})
+    response = client.get("/items", params={"type": 1, "id": folder_id})
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False

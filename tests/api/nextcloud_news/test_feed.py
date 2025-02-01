@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 def test_feed_creation(client: TestClient, feed_server) -> None:
     # when
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
@@ -24,7 +24,7 @@ def test_feed_creation(client: TestClient, feed_server) -> None:
 def test_feed_creation_with_folder_id_0(client: TestClient, feed_server) -> None:
     # when
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/atom.xml"),
             "folderId": 0,
@@ -44,7 +44,7 @@ def test_feed_creation_with_folder_id_0(client: TestClient, feed_server) -> None
 def test_feed_already_exists(client: TestClient, feed_server) -> None:
     # given
     client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": f"{feed_server.url_for('/atom.xml')}",
             "folderId": None,
@@ -52,7 +52,7 @@ def test_feed_already_exists(client: TestClient, feed_server) -> None:
     )
     # when
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
@@ -66,7 +66,7 @@ def test_feed_already_exists(client: TestClient, feed_server) -> None:
 def test_feed_cannot_be_read(client: TestClient, feed_server) -> None:
     # when
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/non-existant.xml"),
             "folderId": None,
@@ -80,7 +80,7 @@ def test_feed_cannot_be_read(client: TestClient, feed_server) -> None:
 def test_delete_feed(client: TestClient, feed_server) -> None:
     # given
     response = client.post(
-        "/feeds/",
+        "/feeds",
         json={
             "url": feed_server.url_for("/atom.xml"),
             "folderId": None,
@@ -93,7 +93,7 @@ def test_delete_feed(client: TestClient, feed_server) -> None:
 
     # then
     assert response.status_code == 200
-    response = client.get("/feeds/")
+    response = client.get("/feeds")
     feeds = response.json()["feeds"]
     assert len(feeds) == 0
 

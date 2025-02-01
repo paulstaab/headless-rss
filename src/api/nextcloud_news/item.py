@@ -62,7 +62,7 @@ class FeedSelectionMethod(enum.Enum):
     ALL = 3
 
 
-@router.get("/", response_model=ItemGetOut)
+@router.get("", response_model=ItemGetOut)
 def get_items(
     batchSize: int = 10,  # noqa: N803
     offset: int = 0,

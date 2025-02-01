@@ -46,7 +46,7 @@ class FeedGetOut(BaseModel):
     )
 
 
-@router.get("/", response_model=FeedGetOut)
+@router.get("", response_model=FeedGetOut)
 def get_feeds() -> FeedGetOut:
     db = database.get_session()
     feeds = db.query(database.Feed).all()
@@ -75,7 +75,7 @@ class FeedPostOut(BaseModel):
     )
 
 
-@router.post("/", response_model=FeedPostOut)
+@router.post("", response_model=FeedPostOut)
 def add_feed(input: FeedPostIn):
     logger.info(f"Adding feed with URL `{input.url}` to folder {input.folder_id}")
     db = database.get_session()
