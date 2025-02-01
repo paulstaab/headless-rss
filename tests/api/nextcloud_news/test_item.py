@@ -168,7 +168,7 @@ def test_mark_item_as_starred(client: TestClient, feed_server) -> None:
         },
     )
     feed_id = response.json()["feeds"][0]["id"]
-    guid_hash = response.json()["feeds"][0]["guidHash"]
+    guid_hash = client.get("/items", params={"type": 3}).json()["items"][0]["guidHash"]
 
     # when
     response = client.put(f"/items/{feed_id}/{guid_hash}/star")
@@ -190,19 +190,20 @@ def test_mark_multiple_items_as_starred(client: TestClient, feed_server) -> None
             "folderId": None,
         },
     )
-    guid_hash = response.json()["feeds"][0]["guidHash"]
+    feed_id = response.json()["feeds"][0]["id"]
+    guid_hash = client.get("/items", params={"type": 3}).json()["items"][0]["guidHash"]
 
     # when
     response = client.put(
         "/items/star/multiple",
         json={
-            "items": [{"guidHash": guid_hash}],
+            "items": [{"guidHash": guid_hash, "feedId": feed_id}],
         },
     )
 
     # then
     assert response.status_code == 200
-    response = client.get("/items", params={"type": 0, "id": guid_hash})
+    response = client.get("/items", params={"type": 3})
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["starred"] is True
@@ -218,7 +219,7 @@ def test_mark_item_as_unstarred(client: TestClient, feed_server) -> None:
         },
     )
     feed_id = response.json()["feeds"][0]["id"]
-    guid_hash = response.json()["feeds"][0]["guidHash"]
+    guid_hash = client.get("/items", params={"type": 3}).json()["items"][0]["guidHash"]
 
     # when
     response = client.put(f"/items/{feed_id}/{guid_hash}/unstar")
@@ -240,19 +241,20 @@ def test_mark_multiple_items_as_unstarred(client: TestClient, feed_server) -> No
             "folderId": None,
         },
     )
-    guid_hash = response.json()["feeds"][0]["guidHash"]
+    feed_id = response.json()["feeds"][0]["id"]
+    guid_hash = client.get("/items", params={"type": 3}).json()["items"][0]["guidHash"]
 
     # when
     response = client.put(
         "/items/unstar/multiple",
         json={
-            "items": [{"guidHash": guid_hash}],
+            "items": [{"guidHash": guid_hash, "feedId": feed_id}],
         },
     )
 
     # then
     assert response.status_code == 200
-    response = client.get("/items", params={"type": 0, "id": guid_hash})
+    response = client.get("/items", params={"type": 3})
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["starred"] is False

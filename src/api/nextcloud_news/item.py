@@ -137,8 +137,8 @@ def mark_item_as_read(item_id: int):
     db.commit()
 
 
-class ItemListIn(BaseModel):
-    items: list[dict]
+class ItemIDListIn(BaseModel):
+    items: list[int]
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -148,10 +148,10 @@ class ItemListIn(BaseModel):
 
 
 @router.put("/read/multiple")
-def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
+def mark_multiple_items_as_read(input: ItemIDListIn) -> None:  # noqa: N803
     logger.info(f"Marking multiple items as read: {input.items}")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.guid_hash.in_([item["guidHash"] for item in input.items])).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.unread = False
     db.commit()
@@ -169,41 +169,76 @@ def mark_item_as_unread(item_id: int) -> None:
 
 
 @router.put("/unread/multiple")
-def mark_multiple_items_as_unread(input: ItemListIn) -> None:
+def mark_multiple_items_as_unread(input: ItemIDListIn) -> None:
     logger.info(f"Marking multiple items as unread: {input.items}")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.guid_hash.in_([item["guidHash"] for item in input.items])).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.unread = True
     db.commit()
 
 
 @router.put("/{feedId}/{guidHash}/star")
-def mark_item_as_starred(feedId: int, guidHash: str) -> None:
+def mark_item_as_starred(feedId: int, guidHash: str) -> None:  # noqa: N803
     logger.info(f"Marking item {guidHash} as starred")
     db = database.get_session()
-    item = db.query(database.Article).filter(database.Article.feed_id == feedId, database.Article.guid_hash == guidHash).first()
+    item = (
+        db.query(database.Article)
+        .filter(database.Article.feed_id == feedId, database.Article.guid_hash == guidHash)
+        .first()
+    )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     item.starred = True
     db.commit()
 
 
+class ItemByGuidHash(BaseModel):
+    feed_id: int
+    guid_hash: str
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+class ItemGuidListIn(BaseModel):
+    items: list[ItemByGuidHash]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
 @router.put("/star/multiple")
-def mark_multiple_items_as_starred(input: ItemListIn) -> None:
-    logger.info(f"Marking multiple items as starred: {input.items}")
+def mark_multiple_items_as_starred(input: ItemGuidListIn) -> None:
+    logger.info(f"Marking {len(input.items)} items as starred")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.guid_hash.in_([item["guidHash"] for item in input.items])).all()
-    for item in items:
-        item.starred = True
+    for item in input.items:
+        article = (
+            db.query(database.Article)
+            .filter(database.Article.feed_id == item.feed_id, database.Article.guid_hash == item.guid_hash)
+            .first()
+        )
+        if not article:
+            raise HTTPException(status_code=404, detail="Item not found")
+        article.starred = True
     db.commit()
 
 
 @router.put("/{feedId}/{guidHash}/unstar")
-def mark_item_as_unstarred(feedId: int, guidHash: str) -> None:
+def mark_item_as_unstarred(feedId: int, guidHash: str) -> None:  # noqa: N803
     logger.info(f"Marking item {guidHash} as unstarred")
     db = database.get_session()
-    item = db.query(database.Article).filter(database.Article.feed_id == feedId, database.Article.guid_hash == guidHash).first()
+    item = (
+        db.query(database.Article)
+        .filter(database.Article.feed_id == feedId, database.Article.guid_hash == guidHash)
+        .first()
+    )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     item.starred = False
@@ -211,12 +246,18 @@ def mark_item_as_unstarred(feedId: int, guidHash: str) -> None:
 
 
 @router.put("/unstar/multiple")
-def mark_multiple_items_as_unstarred(input: ItemListIn) -> None:
-    logger.info(f"Marking multiple items as unstarred: {input.items}")
+def mark_multiple_items_as_unstarred(input: ItemGuidListIn) -> None:
+    logger.info(f"Marking {len(input.items)} items as unstarred")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.guid_hash.in_([item["guidHash"] for item in input.items])).all()
-    for item in items:
-        item.starred = False
+    for item in input.items:
+        article = (
+            db.query(database.Article)
+            .filter(database.Article.feed_id == item.feed_id, database.Article.guid_hash == item.guid_hash)
+            .first()
+        )
+        if not article:
+            raise HTTPException(status_code=404, detail="Item not found")
+        article.starred = False
     db.commit()
 
 
