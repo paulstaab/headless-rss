@@ -22,7 +22,7 @@ different protocols, multiple users or databases other than sqlite, please look 
 ## Usage Instructions
 Start the API with:
 ```
-docker run -d --rm --user 999 \
+docker run -d --rm --user 9999 --init \
   --name headless_rss \
   --volume headless-rss-data:/app/data \
   --publish 8000:8000 \
