@@ -15,5 +15,5 @@ FROM python:${python_version}-slim-bookworm
 COPY --from=builder --chown=app:app /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+ENTRYPOINT ["/app/docker/entrypoint"]
 CMD ["start"]
