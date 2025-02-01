@@ -80,6 +80,7 @@ def test_mark_item_as_read(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False
+    assert items[0]["lastModified"] is not None  # P4fad
 
 
 def test_mark_multiple_items_as_read(client: TestClient, feed_server) -> None:
@@ -107,6 +108,7 @@ def test_mark_multiple_items_as_read(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False
+    assert items[0]["lastModified"] is not None  # P4fad
 
 
 def test_mark_item_as_unread(client: TestClient, feed_server) -> None:
@@ -129,6 +131,7 @@ def test_mark_item_as_unread(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is True
+    assert items[0]["lastModified"] is not None  # P0bb5
 
 
 def test_mark_multiple_items_as_unread(client: TestClient, feed_server) -> None:
@@ -156,6 +159,7 @@ def test_mark_multiple_items_as_unread(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is True
+    assert items[0]["lastModified"] is not None  # P0bb5
 
 
 def test_mark_item_as_starred(client: TestClient, feed_server) -> None:
@@ -179,6 +183,7 @@ def test_mark_item_as_starred(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["starred"] is True
+    assert items[0]["lastModified"] is not None  # Pb10c
 
 
 def test_mark_multiple_items_as_starred(client: TestClient, feed_server) -> None:
@@ -207,6 +212,7 @@ def test_mark_multiple_items_as_starred(client: TestClient, feed_server) -> None
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["starred"] is True
+    assert items[0]["lastModified"] is not None  # Pb10c
 
 
 def test_mark_item_as_unstarred(client: TestClient, feed_server) -> None:
@@ -230,6 +236,7 @@ def test_mark_item_as_unstarred(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["starred"] is False
+    assert items[0]["lastModified"] is not None  # Pf6cb
 
 
 def test_mark_multiple_items_as_unstarred(client: TestClient, feed_server) -> None:
@@ -258,6 +265,7 @@ def test_mark_multiple_items_as_unstarred(client: TestClient, feed_server) -> No
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["starred"] is False
+    assert items[0]["lastModified"] is not None  # Pf6cb
 
 
 def test_mark_all_items_as_read(client: TestClient, feed_server) -> None:
@@ -285,3 +293,4 @@ def test_mark_all_items_as_read(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False
+    assert items[0]["lastModified"] is not None  # P4fad
