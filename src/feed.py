@@ -42,7 +42,13 @@ def update(feed_id: int) -> None:
     logger.info(f"Updating feed {feed_id} ({feed.title})")
     parsed_feed = _parse(feed.url)
     for article in parsed_feed.entries:
-        db.add(_create_article(article, feed_id))
+        existing_article = (
+            db.query(database.Article)
+            .filter_by(guid_hash=md5(article["id"].encode()).hexdigest())
+            .first()
+        )
+        if not existing_article:
+            db.add(_create_article(article, feed_id))
     db.commit()
 
 
@@ -68,3 +74,10 @@ def _create_article(article, feed_id: int) -> database.Article:
         updated_date=article.get("updated_date"),
         url=article.get("url"),
     )
+
+
+def update_all() -> None:
+    db = database.get_session()
+    feeds = db.query(database.Feed).all()
+    for feed in feeds:
+        update(feed.id)
