@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,6 +7,8 @@ from fastapi import FastAPI
 from src import database
 
 from . import feed, folder, item
+
+logging.getLogger("src").setLevel(logging.INFO)
 
 
 @asynccontextmanager

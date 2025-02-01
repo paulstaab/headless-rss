@@ -10,9 +10,7 @@ _session_maker: sessionmaker | None = None
 def init(file: Path) -> None:
     global _engine
     global _session_maker
-    _engine = create_engine(
-        url=f"sqlite:///{file}", echo=True, connect_args={"check_same_thread": False}
-    )
+    _engine = create_engine(url=f"sqlite:///{file}", echo=False, connect_args={"check_same_thread": False})
     _session_maker = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 
