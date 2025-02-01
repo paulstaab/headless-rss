@@ -1,11 +1,12 @@
 [project]
-name = "nano-rss"
-version = "0.0.1"
-description = "Add your description here"
+name = "headless-rss"
+dynamic = ["version"]
+description = "A minimal-viable feed aggregator made for self-hosting"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.14.1",
+    "click>=8.1.8",
     "fastapi>=0.115.7",
     "feedparser>=6.0.11",
     "sqlalchemy>=2.0.37",

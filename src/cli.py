@@ -1,16 +1,17 @@
-import argparse
+from pathlib import Path
 
-from src.feed import update_all
+import click
+
+from src import database, feed
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Update all feeds in the database.")
-    parser.add_argument("update", action="store_true", help="Update all feeds")
-    args = parser.parse_args()
-
-    if args.update:
-        update_all()
+@click.command()
+@click.argument("command", required=True)
+def cli(command):
+    database.init(Path("data/headless-rss.sqlite3"))
+    if command == "update":
+        feed.update_all()
 
 
 if __name__ == "__main__":
-    main()
+    cli()

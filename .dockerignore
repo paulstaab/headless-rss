@@ -1,0 +1,8 @@
+.devcontainer
+.git
+.github
+.gitignore
+.pre-commit-config.yaml
+.vscode
+Dockerfile
+tests
