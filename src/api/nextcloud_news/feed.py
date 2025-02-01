@@ -77,17 +77,18 @@ class FeedPostOut(BaseModel):
 
 @router.post("/", response_model=FeedPostOut)
 def add_feed(input: FeedPostIn):
+    logger.info(f"Adding feed with URL `{input.url}` to folder {input.folder_id}")
     db = database.get_session()
     existing_feed = db.query(database.Feed).filter(database.Feed.url == input.url).first()
     if existing_feed:
-        logger.error(f"Feed with URL {input.url} already exists.")
+        logger.error(f"Feed with URL `{input.url}` already exists.")
         raise HTTPException(status_code=409, detail="Feed already exists")
 
-    if input.folder_id is None:
+    if input.folder_id is None or input.folder_id == 0:
         folder = db.query(database.Folder).filter(database.Folder.name == None).first()  # noqa: E711
         if not folder:
             logger.info("Creating default folder")
-            folder = database.Folder(name=None)
+            folder = database.Folder(id=0, name=None)
             db.add(folder)
             db.commit()
             db.refresh(folder)
@@ -95,9 +96,7 @@ def add_feed(input: FeedPostIn):
         folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
         if not folder:
             logger.error(f"Folder with ID {input.folder_id} does not exist.")
-            raise HTTPException(
-                status_code=422, detail=f"Folder with ID {input.folder_id} does not exist"
-            )
+            raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
 
     try:
         new_feed = feed.create(url=input.url, folder_id=folder.id)

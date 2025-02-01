@@ -72,6 +72,7 @@ def get_items(
     oldestFirst: bool = False,  # noqa: N803
 ) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
+    logger.info(f"Getting items for {select_method} = {id} ({batchSize=}, {offset=}, {getRead=}, {oldestFirst=})")
     db = database.get_session()
     query = db.query(database.Article)
 
@@ -90,15 +91,14 @@ def get_items(
     elif select_method == FeedSelectionMethod.ALL:
         pass
 
-    if oldestFirst:
-        query = query.order_by(database.Article.id.asc())
-    else:
-        query = query.order_by(database.Article.id.desc())
+    query = query.order_by(database.Article.id.asc() if oldestFirst else database.Article.id.desc())
 
     if batchSize != -1:
         query = query.limit(batchSize)
 
     items = query.all()
+    logger.info(f"Found {len(items)} items")
+
     return ItemGetOut(items=[Article.model_validate(item) for item in items])
 
 
