@@ -29,7 +29,7 @@ class Article(BaseModel):
     fingerprint: str | None
     guid: str
     guid_hash: str
-    last_modified: int | None
+    last_modified: int
     media_description: str | None
     media_thumbnail: str | None
     pub_date: int | None
