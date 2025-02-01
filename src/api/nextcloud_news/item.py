@@ -138,7 +138,7 @@ def mark_item_as_read(item_id: int):
 
 
 class ItemListIn(BaseModel):
-    item_ids: list[int]
+    items: list[int]
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -149,9 +149,9 @@ class ItemListIn(BaseModel):
 
 @router.put("/read/multiple")
 def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
-    logger.info(f"Marking multiple items as read: {input.item_ids}")
+    logger.info(f"Marking multiple items as read: {input.items}")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.unread = False
     db.commit()
@@ -170,9 +170,9 @@ def mark_item_as_unread(item_id: int) -> None:
 
 @router.put("/unread/multiple")
 def mark_multiple_items_as_unread(input: ItemListIn) -> None:
-    logger.info(f"Marking multiple items as unread: {input.item_ids}")
+    logger.info(f"Marking multiple items as unread: {input.items}")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.unread = True
     db.commit()
@@ -191,9 +191,9 @@ def mark_item_as_starred(item_id: int) -> None:
 
 @router.put("/star/multiple")
 def mark_multiple_items_as_starred(input: ItemListIn) -> None:
-    logger.info(f"Marking multiple items as starred: {input.item_ids}")
+    logger.info(f"Marking multiple items as starred: {input.items}")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.starred = True
     db.commit()
@@ -212,9 +212,9 @@ def mark_item_as_unstarred(item_id: int) -> None:
 
 @router.put("/unstar/multiple")
 def mark_multiple_items_as_unstarred(input: ItemListIn) -> None:
-    logger.info(f"Marking multiple items as unstarred: {input.item_ids}")
+    logger.info(f"Marking multiple items as unstarred: {input.items}")
     db = database.get_session()
-    items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
+    items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
     for item in items:
         item.starred = False
     db.commit()
