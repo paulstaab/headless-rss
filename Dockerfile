@@ -13,8 +13,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:${python_version}-slim-bookworm
 COPY --from=builder --chown=app:app /app /app
-COPY --chown=app:app ./docker/entrypoint.sh /app/entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["start"]
