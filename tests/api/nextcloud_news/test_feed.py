@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from src.feed import update_all
 
 
 def test_feed_creation(client: TestClient, feed_server) -> None:
@@ -85,3 +86,39 @@ def test_delete_non_existent_feed(client: TestClient) -> None:
     # then
     assert response.status_code == 404
     assert response.json()["detail"] == "Feed not found"
+
+
+def test_update_all_feeds(client: TestClient, feed_server) -> None:
+    # given
+    client.post(
+        "/feeds/",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    # when
+    update_all()
+    # then
+    response = client.get("/feeds/")
+    feeds = response.json()["feeds"]
+    assert len(feeds) == 1
+    assert feeds[0]["url"] == feed_server.url_for("/atom.xml")
+
+
+def test_prevent_duplicate_articles(client: TestClient, feed_server) -> None:
+    # given
+    client.post(
+        "/feeds/",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    # when
+    update_all()
+    update_all()
+    # then
+    response = client.get("/items/")
+    items = response.json()["items"]
+    assert len(items) == 1
