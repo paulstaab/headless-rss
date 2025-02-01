@@ -85,22 +85,14 @@ def add_feed(input: FeedPostIn):
         logger.error(f"Feed with URL `{input.url}` already exists.")
         raise HTTPException(status_code=409, detail="Feed already exists")
 
-    if input.folder_id is None or input.folder_id == 0:
-        folder = db.query(database.Folder).filter(database.Folder.name == None).first()  # noqa: E711
-        if not folder:
-            logger.info("Creating default folder")
-            folder = database.Folder(id=0, name=None)
-            db.add(folder)
-            db.commit()
-            db.refresh(folder)
-    else:
+    if input.folder_id is not None:
         folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
         if not folder:
             logger.error(f"Folder with ID {input.folder_id} does not exist.")
             raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
 
     try:
-        new_feed = feed.create(url=input.url, folder_id=folder.id)
+        new_feed = feed.create(url=input.url, folder_id=input.folder_id)
     except Exception as e:
         logger.error(f"Error parsing feed from URL {input.url}: {e}")
         raise HTTPException(status_code=422, detail="Feed cannot be read") from e
@@ -143,21 +135,13 @@ def move_feed(feed_id: int, input: MoveFeedIn):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    if input.folder_id is None or input.folder_id == 0:
-        folder = db.query(database.Folder).filter(database.Folder.name == None).first()  # noqa: E711
-        if not folder:
-            logger.info("Creating default folder")
-            folder = database.Folder(id=0, name=None)
-            db.add(folder)
-            db.commit()
-            db.refresh(folder)
-    else:
+    if input.folder_id is not None:
         folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
         if not folder:
             logger.error(f"Folder with ID {input.folder_id} does not exist.")
             raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
 
-    feed.folder_id = folder.id
+    feed.folder_id = input.folder_id
     db.commit()
     db.refresh(feed)
 

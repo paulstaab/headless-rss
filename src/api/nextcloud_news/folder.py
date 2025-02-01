@@ -35,7 +35,7 @@ class FolderGetOut(BaseModel):
 def get_folders() -> FolderGetOut:
     logger.info("Fetching all folders")
     db = database.get_session()
-    folders = db.query(database.Folder).filter(database.Folder.id > 0).all()
+    folders = db.query(database.Folder).all()
     return FolderGetOut(folders=[Folder.model_validate(folder) for folder in folders])
 
 
