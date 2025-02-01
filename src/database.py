@@ -39,14 +39,14 @@ class Article(Base):
     fingerprint: Mapped[str | None] = mapped_column(default=None)
     guid: Mapped[str]
     guid_hash: Mapped[str]
-    last_modified: Mapped[str]
+    last_modified: Mapped[int]
     media_description: Mapped[str | None] = mapped_column(default=None)
     media_thumbnail: Mapped[str | None] = mapped_column(default=None)
     pub_date: Mapped[int | None] = mapped_column(default=None)
     rtl: Mapped[bool] = mapped_column(default=False)
     starred: Mapped[bool] = mapped_column(default=False)
     unread: Mapped[bool] = mapped_column(default=False)
-    updated_date: Mapped[str | None] = mapped_column(default=None)
+    updated_date: Mapped[int | None] = mapped_column(default=None)
     url: Mapped[str | None] = mapped_column(default=None)
 
 

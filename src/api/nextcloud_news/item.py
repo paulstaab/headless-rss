@@ -1,3 +1,5 @@
+"""API Endpoints under /feeds/"""
+
 import enum
 import logging
 import time
@@ -27,14 +29,14 @@ class Article(BaseModel):
     fingerprint: str | None
     guid: str
     guid_hash: str
-    last_modified: str | None
+    last_modified: int | None
     media_description: str | None
     media_thumbnail: str | None
     pub_date: int | None
     rtl: bool
     starred: bool
     unread: bool
-    updated_date: str | None
+    updated_date: int | None
     url: str | None
 
     model_config = ConfigDict(
@@ -63,13 +65,13 @@ class FeedSelectionMethod(enum.Enum):
 
 @router.get("", response_model=ItemGetOut)
 def get_items(
-    batchSize: int = -1,
+    batchSize: int = -1,  # noqa: N803
     offset: int = 0,
     type: int = 1,
     id: int = 0,
-    getRead: bool = True,
-    oldestFirst: bool = False,
-    lastModified: int = 0,
+    getRead: bool = True,  # noqa: N803
+    oldestFirst: bool = False,  # noqa: N803
+    lastModified: int = 0,  # noqa: N803
 ) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
     logger.info(
@@ -110,7 +112,7 @@ def get_items(
 
 @router.get("/updated", response_model=ItemGetOut)
 def get_updated_items(
-    lastModified: int,
+    lastModified: int,  # noqa: N803
     type: int,
     id: int,
 ) -> ItemGetOut:
@@ -189,7 +191,7 @@ def mark_multiple_items_as_unread(input: ItemIDListIn) -> None:
 
 
 @router.put("/{feedId}/{guidHash}/star")
-def mark_item_as_starred(feedId: int, guidHash: str) -> None:
+def mark_item_as_starred(feedId: int, guidHash: str) -> None:  # noqa: N803
     logger.info(f"Marking item {guidHash} as starred")
     db = database.get_session()
     item = (
@@ -243,7 +245,7 @@ def mark_multiple_items_as_starred(input: ItemGuidListIn) -> None:
 
 
 @router.put("/{feedId}/{guidHash}/unstar")
-def mark_item_as_unstarred(feedId: int, guidHash: str) -> None:
+def mark_item_as_unstarred(feedId: int, guidHash: str) -> None:  # noqa: N803
     logger.info(f"Marking item {guidHash} as unstarred")
     db = database.get_session()
     item = (
