@@ -18,10 +18,22 @@ different protocols, multiple users or databases other than sqlite, please look 
 - [ ] Can serve as a back-end for applications that speak the Nextcloud News protocol
 - [ ] Can be hosted with a single unpriviledged docker container
 
-## Setup Instructions
-
 
 ## Usage Instructions
+Start the API with:
+```
+docker run -d --rm --user 9999 --init \
+  --name headless_rss \
+  --volume headless-rss-data:/app/data \
+  --publish 8000:8000 \
+  ghcr.io/paulstaab/headless-rss:latest
+```
+
+Additionally, you need to setup some kind of cronjob for
+```
+docker exec -ti headless_rss /app/docker/entrypoint update
+```
+to collect the feeds regularly.
 
 
 ## Contribution Guidelines
