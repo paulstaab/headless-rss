@@ -34,7 +34,7 @@ class FolderGetOut(BaseModel):
 @router.get("/", response_model=FolderGetOut)
 def get_folders() -> FolderGetOut:
     db = database.get_session()
-    folders = db.query(database.Folder).all()
+    folders = db.query(database.Folder).filter(database.Folder.id > 0).all()
     return FolderGetOut(folders=[Folder.model_validate(folder) for folder in folders])
 
 

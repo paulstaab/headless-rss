@@ -9,6 +9,8 @@ from src import database
 from . import feed, folder, item
 
 logging.getLogger("src").setLevel(logging.INFO)
+if default_handler := logging.getHandlerByName("default"):
+    logging.getLogger("src").addHandler(default_handler)
 
 
 @asynccontextmanager
