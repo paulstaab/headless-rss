@@ -10,6 +10,22 @@ def test_get_folders(client: TestClient) -> None:
     assert isinstance(folders, list)
 
 
+def test_get_default_folder(client: TestClient, feed_server) -> None:
+    # given
+    response = client.post(
+        "/feeds/",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    # when
+    response = client.get("/folders/")
+    # then
+    assert response.status_code == 200
+    assert response.json()["folders"] == []
+
+
 def test_create_folder(client: TestClient) -> None:
     # when
     response = client.post(

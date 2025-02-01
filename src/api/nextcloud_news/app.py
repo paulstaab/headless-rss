@@ -9,10 +9,13 @@ from src import database
 from . import feed, folder, item
 
 logging.getLogger("src").setLevel(logging.INFO)
+if default_handler := logging.getHandlerByName("default"):
+    logging.getLogger("src").addHandler(default_handler)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logging.getLogger("src").setLevel(logging.INFO)
     database.init(Path("data/headless-rss.sqlite3"))
     yield
 
