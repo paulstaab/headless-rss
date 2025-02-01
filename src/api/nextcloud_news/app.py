@@ -16,5 +16,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(feed.router)
+app.include_router(feed.router, prefix="/index.php/apps/news/api/v1-2")
 app.include_router(item.router)
+app.include_router(item.router, prefix="/index.php/apps/news/api/v1-2")
 app.include_router(folder.router)
+app.include_router(folder.router, prefix="/index.php/apps/news/api/v1-2")
