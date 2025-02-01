@@ -105,3 +105,92 @@ def test_delete_non_existent_feed(client: TestClient) -> None:
     # then
     assert response.status_code == 404
     assert response.json()["detail"] == "Feed not found"
+
+
+def test_move_feed(client: TestClient, feed_server) -> None:
+    # given
+    response = client.post(
+        "/feeds",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    feed_id = response.json()["feeds"][0]["id"]
+
+    response = client.post(
+        "/folders",
+        json={
+            "name": "New Folder",
+        },
+    )
+    folder_id = response.json()["folders"][0]["id"]
+
+    # when
+    response = client.put(
+        f"/feeds/{feed_id}/move",
+        json={
+            "folderId": folder_id,
+        },
+    )
+
+    # then
+    assert response.status_code == 200
+    response = client.get("/feeds")
+    feeds = response.json()["feeds"]
+    assert len(feeds) == 1
+    assert feeds[0]["folderId"] == folder_id
+
+
+def test_rename_feed(client: TestClient, feed_server) -> None:
+    # given
+    response = client.post(
+        "/feeds",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    feed_id = response.json()["feeds"][0]["id"]
+
+    # when
+    response = client.put(
+        f"/feeds/{feed_id}/rename",
+        json={
+            "feedTitle": "New Title",
+        },
+    )
+
+    # then
+    assert response.status_code == 200
+    response = client.get("/feeds")
+    feeds = response.json()["feeds"]
+    assert len(feeds) == 1
+    assert feeds[0]["title"] == "New Title"
+
+
+def test_mark_items_read(client: TestClient, feed_server) -> None:
+    # given
+    response = client.post(
+        "/feeds",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    feed_id = response.json()["feeds"][0]["id"]
+
+    # when
+    response = client.put(
+        f"/feeds/{feed_id}/read",
+        json={
+            "newestItemId": 10,
+        },
+    )
+
+    # then
+    assert response.status_code == 200
+    response = client.get("/items", params={"type": 0, "id": feed_id})
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["unread"] is False

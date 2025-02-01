@@ -123,3 +123,92 @@ def delete_feed(feed_id: int):
         raise HTTPException(status_code=404, detail="Feed not found")
     db.delete(feed)
     db.commit()
+
+
+class MoveFeedIn(BaseModel):
+    folder_id: int | None
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@router.put("/{feed_id}/move")
+def move_feed(feed_id: int, input: MoveFeedIn):
+    logger.info(f"Moving feed with ID {feed_id} to folder {input.folder_id}")
+    db = database.get_session()
+    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    if input.folder_id is None or input.folder_id == 0:
+        folder = db.query(database.Folder).filter(database.Folder.name == None).first()  # noqa: E711
+        if not folder:
+            logger.info("Creating default folder")
+            folder = database.Folder(id=0, name=None)
+            db.add(folder)
+            db.commit()
+            db.refresh(folder)
+    else:
+        folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
+        if not folder:
+            logger.error(f"Folder with ID {input.folder_id} does not exist.")
+            raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
+
+    feed.folder_id = folder.id
+    db.commit()
+    db.refresh(feed)
+
+
+class RenameFeedIn(BaseModel):
+    feed_title: str
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@router.put("/{feed_id}/rename")
+def rename_feed(feed_id: int, input: RenameFeedIn):
+    logger.info(f"Renaming feed with ID {feed_id} to `{input.feed_title}`")
+    db = database.get_session()
+    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    feed.title = input.feed_title
+    db.commit()
+    db.refresh(feed)
+
+
+class MarkItemsReadIn(BaseModel):
+    newest_item_id: int
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+@router.put("/{feed_id}/read")
+def mark_items_read(feed_id: int, input: MarkItemsReadIn):
+    logger.info(f"Marking items as read in feed with ID {feed_id} until item ID {input.newest_item_id}")
+    db = database.get_session()
+    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    items = (
+        db.query(database.Article)
+        .filter(database.Article.feed_id == feed_id)
+        .filter(database.Article.id <= input.newest_item_id)
+        .all()
+    )
+    for item in items:
+        item.unread = False
+    db.commit()
