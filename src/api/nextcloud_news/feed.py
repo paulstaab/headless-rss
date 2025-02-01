@@ -48,6 +48,7 @@ class FeedGetOut(BaseModel):
 
 @router.get("", response_model=FeedGetOut)
 def get_feeds() -> FeedGetOut:
+    logger.info("Fetching all feeds")
     db = database.get_session()
     feeds = db.query(database.Feed).all()
     return FeedGetOut(feeds=[Feed.model_validate(feed) for feed in feeds])
@@ -115,6 +116,7 @@ def add_feed(input: FeedPostIn):
 
 @router.delete("/{feed_id}")
 def delete_feed(feed_id: int):
+    logger.info(f"Deleting feed with ID {feed_id}")
     db = database.get_session()
     feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
     if not feed:

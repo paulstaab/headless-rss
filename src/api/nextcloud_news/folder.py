@@ -33,6 +33,7 @@ class FolderGetOut(BaseModel):
 
 @router.get("", response_model=FolderGetOut)
 def get_folders() -> FolderGetOut:
+    logger.info("Fetching all folders")
     db = database.get_session()
     folders = db.query(database.Folder).filter(database.Folder.id > 0).all()
     return FolderGetOut(folders=[Folder.model_validate(folder) for folder in folders])
@@ -60,6 +61,7 @@ class FolderPostOut(BaseModel):
 
 @router.post("", response_model=FolderPostOut)
 def create_folder(input: FolderPostIn):
+    logger.info(f"Creating folder with name `{input.name}`")
     db = database.get_session()
     existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
     if existing_folder:
@@ -80,6 +82,7 @@ def create_folder(input: FolderPostIn):
 
 @router.delete("/{folder_id}")
 def delete_folder(folder_id: int):
+    logger.info(f"Deleting folder with ID {folder_id}")
     db = database.get_session()
     folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
     if not folder:
@@ -101,6 +104,7 @@ class FolderPutIn(BaseModel):
 
 @router.put("/{folder_id}")
 def rename_folder(folder_id: int, input: FolderPutIn):
+    logger.info(f"Renaming folder with ID {folder_id} to `{input.name}`")
     db = database.get_session()
     folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
     if not folder:
@@ -132,6 +136,7 @@ class MarkItemsReadIn(BaseModel):
 
 @router.post("/{folder_id}/read")
 def mark_items_read(folder_id: int, input: MarkItemsReadIn):
+    logger.info(f"Marking items as read in folder with ID {folder_id} until item ID {input.newest_item_id}")
     db = database.get_session()
     folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
     if not folder:
