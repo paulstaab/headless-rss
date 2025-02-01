@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import click
@@ -14,4 +15,5 @@ def cli(command):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     cli()

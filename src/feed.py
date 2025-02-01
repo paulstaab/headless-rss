@@ -89,5 +89,6 @@ def _create_fingerprint(content: str | None, title: str | None, url: str | None)
 def update_all() -> None:
     db = database.get_session()
     feeds = db.query(database.Feed).all()
+    logger.info(f"Updating {len(feeds)} feeds")
     for feed in feeds:
         update(feed.id)
