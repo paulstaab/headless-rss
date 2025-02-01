@@ -46,7 +46,10 @@ jobs:
     needs: [lint, test]
     # if: github.ref == 'refs/heads/main'  # ToDo: Enalbe before merge
     permissions:
+      contents: read
       packages: write
+      attestations: write
+      id-token: write
     steps:
     - uses: actions/checkout@v2
     - name: Set up Docker Buildx
