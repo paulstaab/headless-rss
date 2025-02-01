@@ -1,10 +1,13 @@
-import click
+import argparse
 from src.feed import update_all
 
-@click.command()
-def update_all_feeds():
-    """Update all feeds in the database."""
-    update_all()
+def main():
+    parser = argparse.ArgumentParser(description="Update all feeds in the database.")
+    parser.add_argument("update", action="store_true", help="Update all feeds")
+    args = parser.parse_args()
+
+    if args.update:
+        update_all()
 
 if __name__ == "__main__":
-    update_all_feeds()
+    main()
