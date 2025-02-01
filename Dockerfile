@@ -13,5 +13,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:${python_version}-slim-bookworm
 COPY --from=builder --chown=app:app /app /app
+COPY --chown=app:app docker/entrypoint.sh /app/entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH"
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+WORKDIR /app
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["start"]
