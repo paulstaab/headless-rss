@@ -94,7 +94,7 @@ def test_mark_multiple_items_as_read(client: TestClient, feed_server) -> None:
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(
+    response = client.put(
         "/items/read/multiple",
         json={
             "itemIds": [item_id],
@@ -121,7 +121,7 @@ def test_mark_item_as_unread(client: TestClient, feed_server) -> None:
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(f"/items/{item_id}/unread")
+    response = client.put(f"/items/{item_id}/unread")
 
     # then
     assert response.status_code == 200
@@ -143,7 +143,7 @@ def test_mark_multiple_items_as_unread(client: TestClient, feed_server) -> None:
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(
+    response = client.put(
         "/items/unread/multiple",
         json={
             "itemIds": [item_id],
@@ -170,7 +170,7 @@ def test_mark_item_as_starred(client: TestClient, feed_server) -> None:
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(f"/items/{item_id}/star")
+    response = client.put(f"/items/{item_id}/star")
 
     # then
     assert response.status_code == 200
@@ -192,7 +192,7 @@ def test_mark_multiple_items_as_starred(client: TestClient, feed_server) -> None
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(
+    response = client.put(
         "/items/star/multiple",
         json={
             "itemIds": [item_id],
@@ -219,7 +219,7 @@ def test_mark_item_as_unstarred(client: TestClient, feed_server) -> None:
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(f"/items/{item_id}/unstar")
+    response = client.put(f"/items/{item_id}/unstar")
 
     # then
     assert response.status_code == 200
@@ -241,7 +241,7 @@ def test_mark_multiple_items_as_unstarred(client: TestClient, feed_server) -> No
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(
+    response = client.put(
         "/items/unstar/multiple",
         json={
             "itemIds": [item_id],
@@ -268,7 +268,7 @@ def test_mark_all_items_as_read(client: TestClient, feed_server) -> None:
     item_id = response.json()["newestItemId"]
 
     # when
-    response = client.post(
+    response = client.put(
         "/items/read",
         json={
             "newestItemId": item_id,

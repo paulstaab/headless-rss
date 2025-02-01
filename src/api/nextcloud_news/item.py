@@ -145,7 +145,7 @@ class ItemListIn(BaseModel):
     )
 
 
-@router.post("/read/multiple")
+@router.put("/read/multiple")
 def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
@@ -154,7 +154,7 @@ def mark_multiple_items_as_read(input: ItemListIn) -> None:  # noqa: N803
     db.commit()
 
 
-@router.post("/{item_id}/unread")
+@router.put("/{item_id}/unread")
 def mark_item_as_unread(item_id: int):
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
@@ -164,7 +164,7 @@ def mark_item_as_unread(item_id: int):
     db.commit()
 
 
-@router.post("/unread/multiple")
+@router.put("/unread/multiple")
 def mark_multiple_items_as_unread(input: ItemListIn):
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
@@ -173,7 +173,7 @@ def mark_multiple_items_as_unread(input: ItemListIn):
     db.commit()
 
 
-@router.post("/{item_id}/star")
+@router.put("/{item_id}/star")
 def mark_item_as_starred(item_id: int):
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
@@ -183,7 +183,7 @@ def mark_item_as_starred(item_id: int):
     db.commit()
 
 
-@router.post("/star/multiple")
+@router.put("/star/multiple")
 def mark_multiple_items_as_starred(input: ItemListIn):
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
@@ -192,7 +192,7 @@ def mark_multiple_items_as_starred(input: ItemListIn):
     db.commit()
 
 
-@router.post("/{item_id}/unstar")
+@router.put("/{item_id}/unstar")
 def mark_item_as_unstarred(item_id: int):
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
@@ -202,7 +202,7 @@ def mark_item_as_unstarred(item_id: int):
     db.commit()
 
 
-@router.post("/unstar/multiple")
+@router.put("/unstar/multiple")
 def mark_multiple_items_as_unstarred(input: ItemListIn):
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
@@ -221,7 +221,7 @@ class MarkAllItemsReadIn(BaseModel):
     )
 
 
-@router.post("/read")
+@router.put("/read")
 def mark_all_items_as_read(input: MarkAllItemsReadIn):
     db = database.get_session()
     items = db.query(database.Article).filter(database.Article.id <= input.newest_item_id).all()
