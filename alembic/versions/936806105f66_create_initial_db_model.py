@@ -22,7 +22,7 @@ def upgrade() -> None:
     op.create_table(
         "folder",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("name", sa.String(), nullable=True),
+        sa.Column("name", sa.String(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name"),
     )
@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column("favicon_link", sa.String(), nullable=True),
         sa.Column("added", sa.Integer(), nullable=False),
         sa.Column("next_update_time", sa.Integer(), nullable=True),
-        sa.Column("folder_id", sa.Integer(), nullable=False),
+        sa.Column("folder_id", sa.Integer(), nullable=True),
         sa.Column("ordering", sa.Integer(), nullable=False),
         sa.Column("link", sa.String(), nullable=True),
         sa.Column("pinned", sa.Boolean(), nullable=False),
