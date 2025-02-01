@@ -1,5 +1,7 @@
 import argparse
+
 from src.feed import update_all
+
 
 def main():
     parser = argparse.ArgumentParser(description="Update all feeds in the database.")
@@ -8,6 +10,7 @@ def main():
 
     if args.update:
         update_all()
+
 
 if __name__ == "__main__":
     main()

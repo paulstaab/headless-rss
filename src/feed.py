@@ -42,7 +42,11 @@ def update(feed_id: int) -> None:
     logger.info(f"Updating feed {feed_id} ({feed.title})")
     parsed_feed = _parse(feed.url)
     for article in parsed_feed.entries:
-        existing_article = db.query(database.Article).filter_by(guid_hash=md5(article["id"].encode()).hexdigest()).first()
+        existing_article = (
+            db.query(database.Article)
+            .filter_by(guid_hash=md5(article["id"].encode()).hexdigest())
+            .first()
+        )
         if not existing_article:
             db.add(_create_article(article, feed_id))
     db.commit()
