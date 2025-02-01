@@ -4,6 +4,7 @@
 .gitignore
 .pre-commit-config.yaml
 .vscode
+.venv
 data
 Dockerfile
 tests

@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:${python_version}-slim-bookworm
 COPY --from=builder --chown=app:app /app /app
 RUN mkdir /app/data && chmod 775 /app/data
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app"
 WORKDIR /app
 ENTRYPOINT ["/app/docker/entrypoint"]
 CMD ["start"]
