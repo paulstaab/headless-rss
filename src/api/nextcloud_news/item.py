@@ -109,6 +109,7 @@ def get_updated_items(
     id: int,
 ) -> ItemGetOut:
     select_method = FeedSelectionMethod(type)
+    logger.info(f"Getting updated items for {select_method} = {id} (lastModified={lastModified})")
     db = database.get_session()
     query = db.query(database.Article).filter(database.Article.last_modified >= lastModified)
 
@@ -127,6 +128,7 @@ def get_updated_items(
 
 @router.post("/{item_id}/read")
 def mark_item_as_read(item_id: int):
+    logger.info(f"Marking item {item_id} as read")
     db = database.get_session()
     item = db.query(database.Article).filter(database.Article.id == item_id).first()
     if not item:
