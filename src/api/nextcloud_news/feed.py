@@ -49,8 +49,8 @@ class FeedGetOut(BaseModel):
 @router.get("", response_model=FeedGetOut)
 def get_feeds() -> FeedGetOut:
     logger.info("Fetching all feeds")
-    db = database.get_session()
-    feeds = db.query(database.Feed).all()
+    with database.get_session() as db:
+        feeds = db.query(database.Feed).all()
     return FeedGetOut(feeds=[Feed.model_validate(feed) for feed in feeds])
 
 
@@ -79,17 +79,17 @@ class FeedPostOut(BaseModel):
 @router.post("", response_model=FeedPostOut)
 def add_feed(input: FeedPostIn):
     logger.info(f"Adding feed with URL `{input.url}` to folder {input.folder_id}")
-    db = database.get_session()
-    existing_feed = db.query(database.Feed).filter(database.Feed.url == input.url).first()
-    if existing_feed:
-        logger.error(f"Feed with URL `{input.url}` already exists.")
-        raise HTTPException(status_code=409, detail="Feed already exists")
+    with database.get_session() as db:
+        existing_feed = db.query(database.Feed).filter(database.Feed.url == input.url).first()
+        if existing_feed:
+            logger.error(f"Feed with URL `{input.url}` already exists.")
+            raise HTTPException(status_code=409, detail="Feed already exists")
 
-    if input.folder_id is not None:
-        folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
-        if not folder:
-            logger.error(f"Folder with ID {input.folder_id} does not exist.")
-            raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
+        if input.folder_id is not None:
+            folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
+            if not folder:
+                logger.error(f"Folder with ID {input.folder_id} does not exist.")
+                raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
 
     try:
         new_feed = feed.create(url=input.url, folder_id=input.folder_id)
@@ -97,11 +97,12 @@ def add_feed(input: FeedPostIn):
         logger.error(f"Error parsing feed from URL {input.url}: {e}")
         raise HTTPException(status_code=422, detail="Feed cannot be read") from e
 
-    db.add(new_feed)
-    db.commit()
-    db.refresh(new_feed)
+    with database.get_session() as db:
+        db.add(new_feed)
+        db.commit()
+        db.refresh(new_feed)
 
-    feed.update(new_feed.id)
+    feed.update(new_feed.id, max_articles=10)
 
     return {"feeds": get_feeds().feeds, "newestItemId": new_feed.id}
 
@@ -109,12 +110,12 @@ def add_feed(input: FeedPostIn):
 @router.delete("/{feed_id}")
 def delete_feed(feed_id: int):
     logger.info(f"Deleting feed with ID {feed_id}")
-    db = database.get_session()
-    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
-    if not feed:
-        raise HTTPException(status_code=404, detail="Feed not found")
-    db.delete(feed)
-    db.commit()
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
+        db.delete(feed)
+        db.commit()
 
 
 class MoveFeedIn(BaseModel):
@@ -130,20 +131,20 @@ class MoveFeedIn(BaseModel):
 @router.put("/{feed_id}/move")
 def move_feed(feed_id: int, input: MoveFeedIn):
     logger.info(f"Moving feed with ID {feed_id} to folder {input.folder_id}")
-    db = database.get_session()
-    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
-    if not feed:
-        raise HTTPException(status_code=404, detail="Feed not found")
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
 
-    if input.folder_id is not None:
-        folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
-        if not folder:
-            logger.error(f"Folder with ID {input.folder_id} does not exist.")
-            raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
+        if input.folder_id is not None:
+            folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
+            if not folder:
+                logger.error(f"Folder with ID {input.folder_id} does not exist.")
+                raise HTTPException(status_code=422, detail=f"Folder with ID {input.folder_id} does not exist")
 
-    feed.folder_id = input.folder_id
-    db.commit()
-    db.refresh(feed)
+        feed.folder_id = input.folder_id
+        db.commit()
+        db.refresh(feed)
 
 
 class RenameFeedIn(BaseModel):
@@ -159,14 +160,14 @@ class RenameFeedIn(BaseModel):
 @router.put("/{feed_id}/rename")
 def rename_feed(feed_id: int, input: RenameFeedIn):
     logger.info(f"Renaming feed with ID {feed_id} to `{input.feed_title}`")
-    db = database.get_session()
-    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
-    if not feed:
-        raise HTTPException(status_code=404, detail="Feed not found")
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
 
-    feed.title = input.feed_title
-    db.commit()
-    db.refresh(feed)
+        feed.title = input.feed_title
+        db.commit()
+        db.refresh(feed)
 
 
 class MarkItemsReadIn(BaseModel):
@@ -182,17 +183,17 @@ class MarkItemsReadIn(BaseModel):
 @router.put("/{feed_id}/read")
 def mark_items_read(feed_id: int, input: MarkItemsReadIn):
     logger.info(f"Marking items as read in feed with ID {feed_id} until item ID {input.newest_item_id}")
-    db = database.get_session()
-    feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
-    if not feed:
-        raise HTTPException(status_code=404, detail="Feed not found")
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
 
-    items = (
-        db.query(database.Article)
-        .filter(database.Article.feed_id == feed_id)
-        .filter(database.Article.id <= input.newest_item_id)
-        .all()
-    )
-    for item in items:
-        item.unread = False
-    db.commit()
+        items = (
+            db.query(database.Article)
+            .filter(database.Article.feed_id == feed_id)
+            .filter(database.Article.id <= input.newest_item_id)
+            .all()
+        )
+        for item in items:
+            item.unread = False
+        db.commit()

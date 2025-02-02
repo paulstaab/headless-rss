@@ -35,18 +35,21 @@ def _parse(url: str):
     return parsed_feed
 
 
-def update(feed_id: int) -> None:
-    db = database.get_session()
-    feed = db.query(database.Feed).get(feed_id)
+def update(feed_id: int, max_articles: int = 50) -> None:
+    with database.get_session() as db:
+        feed = db.query(database.Feed).get(feed_id)
     if not feed:
         raise ValueError(f"Feed with ID {feed_id} does not exist")
     logger.info(f"Updating feed {feed_id} ({feed.title})")
     parsed_feed = _parse(feed.url)
-    for article in parsed_feed.entries:
-        existing_article = db.query(database.Article).filter_by(guid_hash=_hash(article["id"])).first()
-        if not existing_article:
-            db.add(_create_article(article, feed_id))
-    db.commit()
+    with database.get_session() as db:
+        for idx, article in enumerate(parsed_feed.entries):
+            if idx >= max_articles:
+                break
+            existing_article = db.query(database.Article).filter_by(guid_hash=_hash(article["id"])).first()
+            if not existing_article:
+                db.add(_create_article(article, feed_id))
+        db.commit()
 
 
 def _create_article(article, feed_id: int) -> database.Article:
@@ -87,8 +90,8 @@ def _create_fingerprint(content: str | None, title: str | None, url: str | None)
 
 
 def update_all() -> None:
-    db = database.get_session()
-    feeds = db.query(database.Feed).all()
+    with database.get_session() as db:
+        feeds = db.query(database.Feed).all()
     logger.info(f"Updating {len(feeds)} feeds")
     for feed in feeds:
         update(feed.id)
