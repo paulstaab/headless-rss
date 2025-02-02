@@ -34,8 +34,8 @@ class FolderGetOut(BaseModel):
 @router.get("", response_model=FolderGetOut)
 def get_folders() -> FolderGetOut:
     logger.info("Fetching all folders")
-    db = database.get_session()
-    folders = db.query(database.Folder).all()
+    with database.get_session() as db:
+        folders = db.query(database.Folder).all()
     return FolderGetOut(folders=[Folder.model_validate(folder) for folder in folders])
 
 
@@ -62,8 +62,8 @@ class FolderPostOut(BaseModel):
 @router.post("", response_model=FolderPostOut)
 def create_folder(input: FolderPostIn):
     logger.info(f"Creating folder with name `{input.name}`")
-    db = database.get_session()
-    existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
+    with database.get_session() as db:
+        existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
     if existing_folder:
         logger.error(f"Folder with name {input.name} already exists.")
         raise HTTPException(status_code=409, detail="Folder already exists")
@@ -72,10 +72,11 @@ def create_folder(input: FolderPostIn):
         logger.error("Folder name is invalid (empty).")
         raise HTTPException(status_code=422, detail="Folder name is invalid")
 
-    new_folder = database.Folder(name=input.name)
-    db.add(new_folder)
-    db.commit()
-    db.refresh(new_folder)
+    with database.get_session() as db:
+        new_folder = database.Folder(name=input.name)
+        db.add(new_folder)
+        db.commit()
+        db.refresh(new_folder)
 
     return FolderPostOut(folders=[Folder.model_validate(new_folder)])
 
@@ -83,13 +84,13 @@ def create_folder(input: FolderPostIn):
 @router.delete("/{folder_id}")
 def delete_folder(folder_id: int):
     logger.info(f"Deleting folder with ID {folder_id}")
-    db = database.get_session()
-    folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    db.query(database.Feed).filter(database.Feed.folder_id == folder_id).delete()
-    db.delete(folder)
-    db.commit()
+    with database.get_session() as db:
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        db.query(database.Feed).filter(database.Feed.folder_id == folder_id).delete()
+        db.delete(folder)
+        db.commit()
 
 
 class FolderPutIn(BaseModel):
@@ -105,23 +106,23 @@ class FolderPutIn(BaseModel):
 @router.put("/{folder_id}")
 def rename_folder(folder_id: int, input: FolderPutIn):
     logger.info(f"Renaming folder with ID {folder_id} to `{input.name}`")
-    db = database.get_session()
-    folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
+    with database.get_session() as db:
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
 
-    existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
-    if existing_folder:
-        logger.error(f"Folder with name {input.name} already exists.")
-        raise HTTPException(status_code=409, detail="Folder already exists")
+        existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
+        if existing_folder:
+            logger.error(f"Folder with name {input.name} already exists.")
+            raise HTTPException(status_code=409, detail="Folder already exists")
 
-    if not input.name:
-        logger.error("Folder name is invalid (empty).")
-        raise HTTPException(status_code=422, detail="Folder name is invalid")
+        if not input.name:
+            logger.error("Folder name is invalid (empty).")
+            raise HTTPException(status_code=422, detail="Folder name is invalid")
 
-    folder.name = input.name
-    db.commit()
-    db.refresh(folder)
+        folder.name = input.name
+        db.commit()
+        db.refresh(folder)
 
 
 class MarkItemsReadIn(BaseModel):
@@ -137,18 +138,18 @@ class MarkItemsReadIn(BaseModel):
 @router.post("/{folder_id}/read")
 def mark_items_read(folder_id: int, input: MarkItemsReadIn):
     logger.info(f"Marking items as read in folder with ID {folder_id} until item ID {input.newest_item_id}")
-    db = database.get_session()
-    folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
+    with database.get_session() as db:
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
 
-    items = (
-        db.query(database.Article)
-        .join(database.Feed)
-        .filter(database.Feed.folder_id == folder_id)
-        .filter(database.Article.id <= input.newest_item_id)
-        .all()
-    )
-    for item in items:
-        item.unread = False
-    db.commit()
+        items = (
+            db.query(database.Article)
+            .join(database.Feed)
+            .filter(database.Feed.folder_id == folder_id)
+            .filter(database.Article.id <= input.newest_item_id)
+            .all()
+        )
+        for item in items:
+            item.unread = False
+        db.commit()

@@ -17,10 +17,9 @@ def client() -> TestClient:
 def db(tmp_path: Path):
     """Create a new database for each test."""
     database.init(file=tmp_path / "test.db")
-    db = database.get_session()
-    database.Base.metadata.create_all(bind=db.get_bind())
-    yield db
-    db.close()
+    with database.get_session() as db:
+        database.Base.metadata.create_all(bind=db.get_bind())
+        yield db
 
 
 def _respond_with_file(request, file_name: str) -> werkzeug.Response:
