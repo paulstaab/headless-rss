@@ -102,7 +102,7 @@ def add_feed(input: FeedPostIn):
         db.commit()
         db.refresh(new_feed)
 
-    feed.update(new_feed.id)
+    feed.update(new_feed.id, max_articles=10)
 
     return {"feeds": get_feeds().feeds, "newestItemId": new_feed.id}
 

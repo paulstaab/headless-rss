@@ -35,7 +35,7 @@ def _parse(url: str):
     return parsed_feed
 
 
-def update(feed_id: int) -> None:
+def update(feed_id: int, max_articles: int = 50) -> None:
     with database.get_session() as db:
         feed = db.query(database.Feed).get(feed_id)
     if not feed:
@@ -43,7 +43,9 @@ def update(feed_id: int) -> None:
     logger.info(f"Updating feed {feed_id} ({feed.title})")
     parsed_feed = _parse(feed.url)
     with database.get_session() as db:
-        for article in parsed_feed.entries:
+        for idx, article in enumerate(parsed_feed.entries):
+            if idx >= max_articles:
+                break
             existing_article = db.query(database.Article).filter_by(guid_hash=_hash(article["id"])).first()
             if not existing_article:
                 db.add(_create_article(article, feed_id))
