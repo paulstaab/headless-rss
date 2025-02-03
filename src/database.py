@@ -8,6 +8,10 @@ _session_maker: sessionmaker | None = None
 
 
 def init(file: Path) -> None:
+    """Initialize the database engine and session maker.
+
+    :param file: The path to the SQLite database file.
+    """
     global _engine
     global _session_maker
     _engine = create_engine(url=f"sqlite:///{file}", echo=False, connect_args={"check_same_thread": False})
@@ -15,6 +19,11 @@ def init(file: Path) -> None:
 
 
 def get_session() -> Session:
+    """Get a new database session.
+
+    :returns: A new SQLAlchemy session.
+    :raises RuntimeError: If the database has not been initialized.
+    """
     if _session_maker is None:
         raise RuntimeError("database.init() must be called before accessing the session")
     return _session_maker()

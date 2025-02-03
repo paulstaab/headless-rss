@@ -18,6 +18,10 @@ if default_handler := logging.getHandlerByName("default"):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Initialize the database connection.
+
+    :param app: The FastAPI application instance.
+    """
     database.init(Path("data/headless-rss.sqlite3"))
     yield
 
@@ -28,6 +32,12 @@ security = HTTPBasic(auto_error=False)
 
 
 def get_current_username(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
+    """Get the current username from the provided credentials.
+
+    :param credentials: The HTTP basic authentication credentials.
+    :returns: The username if authentication is successful.
+    :raises HTTPException: If authentication fails.
+    """
     username = os.getenv("USERNAME")
     password = os.getenv("PASSWORD")
     if username is None or password is None:
