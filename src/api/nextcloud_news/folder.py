@@ -33,6 +33,10 @@ class FolderGetOut(BaseModel):
 
 @router.get("", response_model=FolderGetOut)
 def get_folders() -> FolderGetOut:
+    """Fetch all folders from the database.
+
+    :returns: A list of all folders.
+    """
     logger.info("Fetching all folders")
     with database.get_session() as db:
         folders = db.query(database.Folder).all()
@@ -61,6 +65,12 @@ class FolderPostOut(BaseModel):
 
 @router.post("", response_model=FolderPostOut)
 def create_folder(input: FolderPostIn):
+    """Create a new folder in the database.
+
+    :param input: The folder data to create.
+    :returns: The created folder.
+    :raises HTTPException: If the folder already exists or the name is invalid.
+    """
     logger.info(f"Creating folder with name `{input.name}`")
     with database.get_session() as db:
         existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
@@ -83,6 +93,11 @@ def create_folder(input: FolderPostIn):
 
 @router.delete("/{folder_id}")
 def delete_folder(folder_id: int):
+    """Delete a folder from the database.
+
+    :param folder_id: The ID of the folder to delete.
+    :raises HTTPException: If the folder is not found.
+    """
     logger.info(f"Deleting folder with ID {folder_id}")
     with database.get_session() as db:
         folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
@@ -105,6 +120,12 @@ class FolderPutIn(BaseModel):
 
 @router.put("/{folder_id}")
 def rename_folder(folder_id: int, input: FolderPutIn):
+    """Rename a folder.
+
+    :param folder_id: The ID of the folder to rename.
+    :param input: The new name for the folder.
+    :raises HTTPException: If the folder is not found or the name is invalid.
+    """
     logger.info(f"Renaming folder with ID {folder_id} to `{input.name}`")
     with database.get_session() as db:
         folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
@@ -137,6 +158,12 @@ class MarkItemsReadIn(BaseModel):
 
 @router.post("/{folder_id}/read")
 def mark_items_read(folder_id: int, input: MarkItemsReadIn):
+    """Mark items as read in a folder.
+
+    :param folder_id: The ID of the folder.
+    :param input: The ID of the newest item to mark as read.
+    :raises HTTPException: If the folder is not found.
+    """
     logger.info(f"Marking items as read in folder with ID {folder_id} until item ID {input.newest_item_id}")
     with database.get_session() as db:
         folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()

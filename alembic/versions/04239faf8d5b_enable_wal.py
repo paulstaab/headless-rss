@@ -18,8 +18,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Enable WAL mode.
+
+    This function executes the SQL command to enable Write-Ahead Logging (WAL) mode.
+    """
     op.execute("PRAGMA journal_mode=WAL")
 
 
 def downgrade() -> None:
+    """Disable WAL mode.
+
+    This function executes the SQL command to disable Write-Ahead Logging (WAL) mode and revert to the default delete mode.
+    """
     op.execute("PRAGMA journal_mode=delete")

@@ -19,6 +19,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create initial database schema.
+
+    This function creates the initial database schema with tables for folders, feeds, and articles.
+    """
     op.create_table(
         "folder",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -79,6 +83,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop all tables.
+
+    This function drops all tables created in the upgrade function, effectively reverting the database schema to its initial state.
+    """
     op.drop_table("article")
     op.drop_table("feed")
     op.drop_table("folder")

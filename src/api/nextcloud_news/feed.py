@@ -48,6 +48,10 @@ class FeedGetOut(BaseModel):
 
 @router.get("", response_model=FeedGetOut)
 def get_feeds() -> FeedGetOut:
+    """Fetch all feeds from the database.
+
+    :returns: A list of all feeds.
+    """
     logger.info("Fetching all feeds")
     with database.get_session() as db:
         feeds = db.query(database.Feed).all()
@@ -78,6 +82,12 @@ class FeedPostOut(BaseModel):
 
 @router.post("", response_model=FeedPostOut)
 def add_feed(input: FeedPostIn):
+    """Add a new feed to the database.
+
+    :param input: The feed data to add.
+    :returns: The added feed and the ID of the newest item.
+    :raises HTTPException: If the feed already exists or the folder does not exist.
+    """
     logger.info(f"Adding feed with URL `{input.url}` to folder {input.folder_id}")
     with database.get_session() as db:
         existing_feed = db.query(database.Feed).filter(database.Feed.url == input.url).first()
@@ -109,6 +119,11 @@ def add_feed(input: FeedPostIn):
 
 @router.delete("/{feed_id}")
 def delete_feed(feed_id: int):
+    """Delete a feed from the database.
+
+    :param feed_id: The ID of the feed to delete.
+    :raises HTTPException: If the feed is not found.
+    """
     logger.info(f"Deleting feed with ID {feed_id}")
     with database.get_session() as db:
         feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
@@ -130,6 +145,12 @@ class MoveFeedIn(BaseModel):
 
 @router.put("/{feed_id}/move")
 def move_feed(feed_id: int, input: MoveFeedIn):
+    """Move a feed to a different folder.
+
+    :param feed_id: The ID of the feed to move.
+    :param input: The folder ID to move the feed to.
+    :raises HTTPException: If the feed or folder is not found.
+    """
     logger.info(f"Moving feed with ID {feed_id} to folder {input.folder_id}")
     with database.get_session() as db:
         feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
@@ -159,6 +180,12 @@ class RenameFeedIn(BaseModel):
 
 @router.put("/{feed_id}/rename")
 def rename_feed(feed_id: int, input: RenameFeedIn):
+    """Rename a feed.
+
+    :param feed_id: The ID of the feed to rename.
+    :param input: The new title for the feed.
+    :raises HTTPException: If the feed is not found.
+    """
     logger.info(f"Renaming feed with ID {feed_id} to `{input.feed_title}`")
     with database.get_session() as db:
         feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
@@ -182,6 +209,12 @@ class MarkItemsReadIn(BaseModel):
 
 @router.put("/{feed_id}/read")
 def mark_items_read(feed_id: int, input: MarkItemsReadIn):
+    """Mark items as read in a feed.
+
+    :param feed_id: The ID of the feed.
+    :param input: The ID of the newest item to mark as read.
+    :raises HTTPException: If the feed is not found.
+    """
     logger.info(f"Marking items as read in feed with ID {feed_id} until item ID {input.newest_item_id}")
     with database.get_session() as db:
         feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
