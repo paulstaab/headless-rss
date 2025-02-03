@@ -35,6 +35,28 @@ docker exec -ti headless_rss /app/docker/entrypoint update
 ```
 to collect the feeds regularly.
 
+## Authentication
+
+The API uses HTTP basic authentication. To enable authentication, set the `USERNAME` and `PASSWORD` environment variables when creating the docker container. The credentials need to be passed as an HTTP header using HTTP basic auth:
+
+```
+Authorization: Basic $CREDENTIALS
+```
+
+where `$CREDENTIALS` is: `base64(USER:PASSWORD)`
+
+### Example
+
+Start the container with authentication enabled:
+```
+docker run -d --rm --user 9999 --init \
+  --name headless_rss \
+  --volume headless-rss-data:/app/data \
+  --publish 8000:8000 \
+  -e USERNAME=myuser \
+  -e PASSWORD=mypassword \
+  ghcr.io/paulstaab/headless-rss:latest
+```
 
 ## Contribution Guidelines
 
