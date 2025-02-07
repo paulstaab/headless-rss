@@ -174,3 +174,24 @@ def test_mark_items_read(client: TestClient, feed_server) -> None:
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["unread"] is False
+
+
+def test_feed_creation_with_folder_id_zero(client: TestClient, feed_server) -> None:
+    # when
+    response = client.post(
+        "/feeds",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": 0,
+        },
+    )
+    # then
+    assert response.status_code == 200
+    feeds = response.json()["feeds"]
+    assert len(feeds) == 1
+    assert feeds[0]["url"] == feed_server.url_for("/atom.xml")
+    assert feeds[0]["title"] == "Test Atom Feed"
+    assert feeds[0]["link"] == "http://example.org/"
+    assert feeds[0]["updateErrorCount"] == 0
+    assert feeds[0]["folderId"] is None
+    assert response.json()["newestItemId"] == feeds[0]["id"]

@@ -95,6 +95,9 @@ def add_feed(input: FeedPostIn):
             logger.error(f"Feed with URL `{input.url}` already exists.")
             raise HTTPException(status_code=409, detail="Feed already exists")
 
+        if input.folder_id == 0:
+            input.folder_id = None
+
         if input.folder_id is not None:
             folder = db.query(database.Folder).filter(database.Folder.id == input.folder_id).first()
             if not folder:
