@@ -170,7 +170,7 @@ def mark_item_as_read(item_id: int):
 
 
 class ItemIDListIn(BaseModel):
-    items: list[int]
+    item_ids: list[int]
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -185,9 +185,9 @@ def mark_multiple_items_as_read(input: ItemIDListIn) -> None:
 
     :param input: The list of item IDs to mark as read.
     """
-    logger.info(f"Marking multiple items as read: {input.items}")
+    logger.info(f"Marking {len(input.item_ids)} items as read")
     with database.get_session() as db:
-        items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
+        items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
         for item in items:
             item.unread = False
             item.last_modified = int(time.time())
@@ -217,9 +217,9 @@ def mark_multiple_items_as_unread(input: ItemIDListIn) -> None:
 
     :param input: The list of item IDs to mark as unread.
     """
-    logger.info(f"Marking multiple items as unread: {input.items}")
+    logger.info(f"Marking {len(input.item_ids)} items as unread")
     with database.get_session() as db:
-        items = db.query(database.Article).filter(database.Article.id.in_(input.items)).all()
+        items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
         for item in items:
             item.unread = True
             item.last_modified = int(time.time())
@@ -233,9 +233,9 @@ def mark_multiple_items_as_starred(input: ItemIDListIn) -> None:
     :param input: The list of item IDs to mark as starred.
     :raises HTTPException: If any item is not found.
     """
-    logger.info(f"Marking {len(input.items)} items as starred")
+    logger.info(f"Marking {len(input.item_ids)} items as starred")
     with database.get_session() as db:
-        for item_id in input.items:
+        for item_id in input.item_ids:
             article = db.query(database.Article).filter(database.Article.id == item_id).first()
             if not article:
                 raise HTTPException(status_code=404, detail="Item not found")
@@ -275,6 +275,24 @@ def mark_item_as_unstarred(item_id: int) -> None:
             raise HTTPException(status_code=404, detail="Item not found")
         item.starred = False
         item.last_modified = int(time.time())
+        db.commit()
+
+
+@router.post("/unstar/multiple")
+def mark_multiple_items_as_unstarred(input: ItemIDListIn) -> None:
+    """Mark multiple items as unstarred.
+
+    :param input: The list of item IDs to mark as unstarred.
+    :raises HTTPException: If any item is not found.
+    """
+    logger.info(f"Marking {len(input.item_ids)} items as unstarred")
+    with database.get_session() as db:
+        for item_id in input.item_ids:
+            article = db.query(database.Article).filter(database.Article.id == item_id).first()
+            if not article:
+                raise HTTPException(status_code=404, detail="Item not found")
+            article.starred = False
+            article.last_modified = int(time.time())
         db.commit()
 
 

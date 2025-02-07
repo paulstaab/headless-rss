@@ -98,7 +98,7 @@ def test_mark_multiple_items_as_read(client: TestClient, feed_server) -> None:
     response = client.post(
         "/items/read/multiple",
         json={
-            "items": [item_id],
+            "itemIds": [item_id],
         },
     )
 
@@ -149,7 +149,7 @@ def test_mark_multiple_items_as_unread(client: TestClient, feed_server) -> None:
     response = client.post(
         "/items/unread/multiple",
         json={
-            "items": [item_id],
+            "itemIds": [item_id],
         },
     )
 
@@ -200,7 +200,7 @@ def test_mark_multiple_items_as_starred(client: TestClient, feed_server) -> None
     response = client.post(
         "/items/star/multiple",
         json={
-            "items": [item_id],
+            "itemIds": [item_id],
         },
     )
 
@@ -251,7 +251,7 @@ def test_mark_multiple_items_as_unstarred(client: TestClient, feed_server) -> No
     response = client.post(
         "/items/unstar/multiple",
         json={
-            "items": [item_id],
+            "itemIds": [item_id],
         },
     )
 
