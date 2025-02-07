@@ -2,15 +2,7 @@ from pathlib import Path
 
 import pytest
 import werkzeug
-from fastapi.testclient import TestClient
 from src import database
-from src.api.nextcloud_news.app import app
-
-
-@pytest.fixture
-def client() -> TestClient:
-    """Test client for the FastAPI app."""
-    return TestClient(app)
 
 
 @pytest.fixture(autouse=True)

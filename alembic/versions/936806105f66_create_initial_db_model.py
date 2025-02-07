@@ -85,7 +85,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop all tables.
 
-    This function drops all tables created in the upgrade function, effectively reverting the database schema to its initial state.
+    This function drops all tables created in the upgrade function, effectively reverting
+    the database schema to its initial state.
     """
     op.drop_table("article")
     op.drop_table("feed")

@@ -6,7 +6,7 @@ from pydantic.alias_generators import to_camel
 
 from src import database
 
-router = APIRouter(prefix="/folders", tags=["folders"])
+router = APIRouter(tags=["folders"])
 logger = logging.getLogger(__name__)
 
 

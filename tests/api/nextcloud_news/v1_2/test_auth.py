@@ -3,7 +3,6 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from src.api.nextcloud_news.app import app
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -13,11 +12,6 @@ def set_auth_env_vars():
     yield
     del os.environ["USERNAME"]
     del os.environ["PASSWORD"]
-
-
-@pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
 
 
 def test_no_auth(client: TestClient) -> None:

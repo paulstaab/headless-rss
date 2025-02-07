@@ -13,7 +13,7 @@ from src import database
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/items", tags=["items"])
+router = APIRouter(tags=["items"])
 
 
 class Article(BaseModel):
