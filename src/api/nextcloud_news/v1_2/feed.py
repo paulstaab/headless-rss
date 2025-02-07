@@ -11,7 +11,7 @@ from src import database, feed
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/feeds", tags=["feeds"])
+router = APIRouter(tags=["feeds"])
 
 
 class Feed(BaseModel):

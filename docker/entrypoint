@@ -7,7 +7,7 @@ if [ "$1" = "start" ]; then
     echo "Running alembic migrations"
     alembic upgrade head
     echo "Starting API server"
-    exec uvicorn src.api.nextcloud_news.app:app --host 0.0.0.0 --port 8000
+    exec uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 elif [ "$1" = "update" ]; then
     echo "Updating feeds"
     exec python -m src.cli update

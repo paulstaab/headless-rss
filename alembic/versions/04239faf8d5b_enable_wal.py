@@ -28,6 +28,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Disable WAL mode.
 
-    This function executes the SQL command to disable Write-Ahead Logging (WAL) mode and revert to the default delete mode.
+    This function executes the SQL command to disable Write-Ahead Logging (WAL) mode and
+    revert to the default delete mode.
     """
     op.execute("PRAGMA journal_mode=delete")
