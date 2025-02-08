@@ -107,11 +107,6 @@ def _create_article(article, feed_id: int) -> database.Article:
     except (TypeError, ValueError):
         updated_date = None
 
-    try:
-        media_thumbnail = article["media_thumbnail"][0]["url"]
-    except (ValueError, KeyError):
-        media_thumbnail = None
-
     return database.Article(
         title=title,
         author=article.get("author"),
@@ -125,8 +120,6 @@ def _create_article(article, feed_id: int) -> database.Article:
         guid=article["id"],
         guid_hash=md5(article["id"].encode()).hexdigest(),
         last_modified=now(),
-        media_description=article.get("media_description"),
-        media_thumbnail=media_thumbnail,
         pub_date=pub_date,
         rtl=False,
         starred=False,
