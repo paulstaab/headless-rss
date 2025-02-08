@@ -25,4 +25,7 @@ def _respond_with_file(request, file_name: str) -> werkzeug.Response:
 @pytest.fixture
 def feed_server(httpserver):
     httpserver.expect_request("/atom.xml").respond_with_handler(lambda x: _respond_with_file(x, "feeds/atom.xml"))
+    httpserver.expect_request("/github_releases.atom").respond_with_handler(
+        lambda x: _respond_with_file(x, "feeds/github_releases.atom")
+    )
     return httpserver
