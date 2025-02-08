@@ -102,14 +102,14 @@ def _create_article(article, feed_id: int) -> database.Article:
     url: str | None = article.get("link")
 
     try:
-        pub_date = int(mktime(article["published_parsed"]))
-    except (TypeError, ValueError, KeyError):
-        pub_date = None
-
-    try:
         updated_date = int(mktime(article["updated_parsed"]))
     except (TypeError, ValueError):
-        updated_date = None
+        updated_date = now()
+
+    try:
+        pub_date = int(mktime(article["published_parsed"]))
+    except (TypeError, ValueError, KeyError):
+        pub_date = updated_date
 
     return database.Article(
         title=title,
