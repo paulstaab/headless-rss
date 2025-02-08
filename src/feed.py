@@ -85,6 +85,16 @@ def _create_article(article, feed_id: int) -> database.Article:
     title: str | None = article.get("title")
     url: str | None = article.get("link")
 
+    try:
+        pub_date = int(mktime(article.get("published_parsed")))
+    except (TypeError, ValueError):
+        pub_date = None
+
+    try:
+        updated_date = int(mktime(article.get("updated_parsed")))
+    except (TypeError, ValueError):
+        updated_date = None
+
     return database.Article(
         title=title,
         author=article.get("author"),
@@ -100,11 +110,11 @@ def _create_article(article, feed_id: int) -> database.Article:
         last_modified=now(),
         media_description=article.get("media_description"),
         media_thumbnail=article.get("media_thumbnail"),
-        pub_date=int(mktime(article.get("published_parsed"))),
+        pub_date=pub_date,
         rtl=False,
         starred=False,
         unread=True,
-        updated_date=int(mktime(article.get("updated_parsed"))),
+        updated_date=updated_date,
         url=url,
     )
 
