@@ -40,6 +40,9 @@ jobs:
     - name: Run tests
       run: |
         uv run --extra dev pytest tests
+    - name: Run Alembic migrations
+      run: |
+        uv run --dev alembic upgrade head
 
   release:
     runs-on: ubuntu-latest
