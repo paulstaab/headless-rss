@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/example/example-repo/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/example/example-repo/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/example/example-repo/releases.atom"/>
+  <title>Release notes from example-repo</title>
+  <updated>2025-03-01T12:00:00Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/123456789/v1.0.0</id>
+    <updated>2025-03-01T12:01:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example/example-repo/releases/tag/v1.0.0"/>
+    <title>v1.0.0</title>
+    <content type="html">&lt;h2&gt;[1.0.0] - 2025-03-01&lt;/h2&gt;
+&lt;h3&gt;Added&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;🚀 Initial Release&lt;/strong&gt;: This is the first official release of the example-repo, featuring all the core functionalities and initial features.&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>example-bot</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/12345?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/123456789/v1.0.1</id>
+    <updated>2025-03-02T14:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example/example-repo/releases/tag/v1.0.1"/>
+    <title>v1.0.1</title>
+    <content type="html">&lt;h2&gt;[1.0.1] - 2025-03-02&lt;/h2&gt;
+&lt;h3&gt;Fixed&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;🐛 Bug Fixes&lt;/strong&gt;: Addressed minor bugs and improved overall stability.&lt;/ul&gt;</content>
+    <author>
+      <name>example-bot</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/12345?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/123456789/v1.1.0</id>
+    <updated>2025-03-03T16:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/example/example-repo/releases/tag/v1.1.0"/>
+    <title>v1.1.0</title>
+    <content type="html">&lt;h2&gt;[1.1.0] - 2025-03-03&lt;/h2&gt;
+&lt;h3&gt;Added&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;✨ New Feature&lt;/strong&gt;: Introduced a new feature that enhances user experience.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Fixed&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;🔧 Minor Fixes&lt;/strong&gt;: Fixed several minor issues reported by users.&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>example-bot</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/12345?s=60&amp;v=4"/>
+  </entry>
+</feed>

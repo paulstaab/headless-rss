@@ -63,15 +63,27 @@ def update(feed_id: int, max_articles: int = 50) -> None:
     if not feed:
         raise ValueError(f"Feed with ID {feed_id} does not exist")
     logger.info(f"Updating feed {feed_id} ({feed.title})")
-    parsed_feed = _parse(feed.url)
     with database.get_session() as db:
+        try:
+            parsed_feed = _parse(feed.url)
+        except Exception as e:
+            logger.error(f"Error updating feed {feed_id}: {e}")
+            feed.update_error_count += 1
+            feed.last_update_error = str(e)
+            db.commit()
+            return
+
         for idx, article in enumerate(parsed_feed.entries):
             if idx >= max_articles:
                 break
-            existing_article = db.query(database.Article).filter_by(guid_hash=_hash(article["id"])).first()
-            if not existing_article:
-                db.add(_create_article(article, feed_id))
-        db.commit()
+            try:
+                existing_article = db.query(database.Article).filter_by(guid_hash=_hash(article["id"])).first()
+                if not existing_article:
+                    db.add(_create_article(article, feed_id))
+                    db.commit()
+
+            except Exception as e:
+                logger.error(f"Error adding article from feed {feed_id}: {e}")
 
 
 def _create_article(article, feed_id: int) -> database.Article:
@@ -86,14 +98,19 @@ def _create_article(article, feed_id: int) -> database.Article:
     url: str | None = article.get("link")
 
     try:
-        pub_date = int(mktime(article.get("published_parsed")))
-    except (TypeError, ValueError):
+        pub_date = int(mktime(article["published_parsed"]))
+    except (TypeError, ValueError, KeyError):
         pub_date = None
 
     try:
-        updated_date = int(mktime(article.get("updated_parsed")))
+        updated_date = int(mktime(article["updated_parsed"]))
     except (TypeError, ValueError):
         updated_date = None
+
+    try:
+        media_thumbnail = article["media_thumbnail"][0]["url"]
+    except (ValueError, KeyError):
+        media_thumbnail = None
 
     return database.Article(
         title=title,
@@ -109,7 +126,7 @@ def _create_article(article, feed_id: int) -> database.Article:
         guid_hash=md5(article["id"].encode()).hexdigest(),
         last_modified=now(),
         media_description=article.get("media_description"),
-        media_thumbnail=article.get("media_thumbnail"),
+        media_thumbnail=media_thumbnail,
         pub_date=pub_date,
         rtl=False,
         starred=False,
