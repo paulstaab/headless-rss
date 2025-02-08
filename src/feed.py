@@ -72,6 +72,10 @@ def update(feed_id: int, max_articles: int = 50) -> None:
             feed.last_update_error = str(e)
             db.commit()
             return
+        if feed.update_error_count > 0:
+            feed.update_error_count = 0
+            feed.last_update_error = None
+            db.commit()
 
         for idx, article in enumerate(parsed_feed.entries):
             if idx >= max_articles:
