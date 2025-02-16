@@ -12,3 +12,9 @@ def client() -> TestClient:
 def test_nextcloud_v1_2_access(client: TestClient) -> None:
     response = client.get("/index.php/apps/news/api/v1-2/version")
     assert response.status_code == 200
+
+
+def test_status_endpoint(client: TestClient) -> None:
+    response = client.get("/status")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

@@ -26,3 +26,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(nextcloud_router, prefix="/index.php/apps/news/api")
+
+
+@app.get("/status")
+async def status():
+    """Status endpoint to check if the service is running."""
+    return {"status": "ok"}
