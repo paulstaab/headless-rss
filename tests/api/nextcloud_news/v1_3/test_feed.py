@@ -195,3 +195,24 @@ def test_feed_creation_with_folder_id_zero(client: TestClient, feed_server) -> N
     assert feeds[0]["updateErrorCount"] == 0
     assert feeds[0]["folderId"] is None
     assert response.json()["newestItemId"] == feeds[0]["id"]
+
+
+def test_next_update_time_calculation(client: TestClient, feed_server) -> None:
+    # given
+    response = client.post(
+        "/feeds",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    feed_id = response.json()["feeds"][0]["id"]
+
+    # when
+    response = client.get("/feeds")
+    feeds = response.json()["feeds"]
+
+    # then
+    assert response.status_code == 200
+    assert len(feeds) == 1
+    assert feeds[0]["nextUpdateTime"] is not None

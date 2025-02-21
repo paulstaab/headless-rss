@@ -89,6 +89,9 @@ def update(feed_id: int, max_articles: int = 50) -> None:
             except Exception as e:
                 logger.error(f"Error adding article from feed {feed_id}: {e}")
 
+        feed.next_update_time = calculate_next_update_time(feed_id)
+        db.commit()
+
 
 def _create_article(article, feed_id: int) -> database.Article:
     """Create a new article in the database.
@@ -162,4 +165,38 @@ def update_all() -> None:
         feeds = db.query(database.Feed).all()
     logger.info(f"Updating {len(feeds)} feeds")
     for feed in feeds:
-        update(feed.id)
+        if feed.next_update_time is None or feed.next_update_time <= now():
+            update(feed.id)
+
+
+def calculate_next_update_time(feed_id: int) -> int:
+    """Calculate the next update time based on the frequency of the last five posts.
+
+    :param feed_id: The ID of the feed to calculate the next update time for.
+    :returns: The next update time in seconds since the epoch.
+    """
+    with database.get_session() as db:
+        articles = (
+            db.query(database.Article)
+            .filter(database.Article.feed_id == feed_id)
+            .order_by(database.Article.pub_date.desc())
+            .limit(5)
+            .all()
+        )
+
+    if len(articles) < 2:
+        return now() + 900  # Default to 15 minutes if there are less than 2 articles
+
+    time_diffs = [articles[i].pub_date - articles[i + 1].pub_date for i in range(len(articles) - 1)]
+    avg_time_diff = sum(time_diffs) / len(time_diffs)
+
+    if avg_time_diff <= 900:
+        return now() + 900  # 15 minutes
+    elif avg_time_diff <= 3600:
+        return now() + 3600  # 1 hour
+    elif avg_time_diff <= 21600:
+        return now() + 21600  # 6 hours
+    elif avg_time_diff <= 43200:
+        return now() + 43200  # 12 hours
+    else:
+        return now() + 86400  # 1 day
