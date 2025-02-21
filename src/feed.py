@@ -10,10 +10,10 @@ from src import database
 logger = logging.getLogger(__name__)
 
 five_minutes = 300
-one_hour = 3600
-six_hours = 21600
-twelve_hours = 43200
-one_day = 86400
+one_hour = 3_600
+six_hours = 21_600
+twelve_hours = 43_200
+one_day = 86_400
 
 
 def now() -> int:
