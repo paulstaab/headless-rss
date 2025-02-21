@@ -9,6 +9,12 @@ from src import database
 
 logger = logging.getLogger(__name__)
 
+five_minutes = 300
+one_hour = 3600
+six_hours = 21600
+twelve_hours = 43200
+one_day = 86400
+
 
 def now() -> int:
     """Get the current time in seconds since the epoch.
@@ -60,10 +66,10 @@ def update(feed_id: int, max_articles: int = 50) -> None:
     """
     with database.get_session() as db:
         feed = db.query(database.Feed).get(feed_id)
-    if not feed:
-        raise ValueError(f"Feed with ID {feed_id} does not exist")
-    logger.info(f"Updating feed {feed_id} ({feed.title})")
-    with database.get_session() as db:
+        if not feed:
+            raise ValueError(f"Feed with ID {feed_id} does not exist")
+        logger.info(f"Updating feed {feed_id} ({feed.title})")
+
         try:
             parsed_feed = _parse(feed.url)
         except Exception as e:
@@ -164,9 +170,12 @@ def update_all() -> None:
     with database.get_session() as db:
         feeds = db.query(database.Feed).all()
     logger.info(f"Updating {len(feeds)} feeds")
+
     for feed in feeds:
         if feed.next_update_time is None or feed.next_update_time <= now():
             update(feed.id)
+        else:
+            logger.info(f"Skipping feed {feed.id} ({feed.title}) until next update time {feed.next_update_time}")
 
 
 def calculate_next_update_time(feed_id: int) -> int:
@@ -185,18 +194,21 @@ def calculate_next_update_time(feed_id: int) -> int:
         )
 
     if len(articles) < 2:
-        return now() + 900  # Default to 15 minutes if there are less than 2 articles
+        return now() + one_day  # Default to 1 day if there are less than 2 articles
 
-    time_diffs = [articles[i].pub_date - articles[i + 1].pub_date for i in range(len(articles) - 1)]
-    avg_time_diff = sum(time_diffs) / len(time_diffs)
+    avg_time_diff = (now() - articles[-1].pub_date) / len(articles)  # type: ignore
+    logger.info(f"Average post frequency for feed {feed_id}: {avg_time_diff}s")
 
-    if avg_time_diff <= 900:
-        return now() + 900  # 15 minutes
-    elif avg_time_diff <= 3600:
-        return now() + 3600  # 1 hour
-    elif avg_time_diff <= 21600:
-        return now() + 21600  # 6 hours
-    elif avg_time_diff <= 43200:
-        return now() + 43200  # 12 hours
+    if avg_time_diff <= one_hour:
+        next_update_in = five_minutes
+    elif avg_time_diff <= six_hours:
+        next_update_in = one_hour
+    elif avg_time_diff <= twelve_hours:
+        next_update_in = six_hours
+    elif avg_time_diff <= one_day:
+        next_update_in = twelve_hours
     else:
-        return now() + 86400  # 1 day
+        next_update_in = one_day
+    logger.info(f"Next update scheduled in {next_update_in}s")
+
+    return now() + next_update_in

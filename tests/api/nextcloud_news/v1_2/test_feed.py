@@ -206,7 +206,6 @@ def test_next_update_time_calculation(client: TestClient, feed_server) -> None:
             "folderId": None,
         },
     )
-    feed_id = response.json()["feeds"][0]["id"]
 
     # when
     response = client.get("/feeds")
