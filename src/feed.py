@@ -9,6 +9,12 @@ from src import database
 
 logger = logging.getLogger(__name__)
 
+five_minutes = 300
+one_hour = 3_600
+six_hours = 21_600
+twelve_hours = 43_200
+one_day = 86_400
+
 
 def now() -> int:
     """Get the current time in seconds since the epoch.
@@ -60,10 +66,10 @@ def update(feed_id: int, max_articles: int = 50) -> None:
     """
     with database.get_session() as db:
         feed = db.query(database.Feed).get(feed_id)
-    if not feed:
-        raise ValueError(f"Feed with ID {feed_id} does not exist")
-    logger.info(f"Updating feed {feed_id} ({feed.title})")
-    with database.get_session() as db:
+        if not feed:
+            raise ValueError(f"Feed with ID {feed_id} does not exist")
+        logger.info(f"Updating feed {feed_id} ({feed.title})")
+
         try:
             parsed_feed = _parse(feed.url)
         except Exception as e:
@@ -88,6 +94,9 @@ def update(feed_id: int, max_articles: int = 50) -> None:
 
             except Exception as e:
                 logger.error(f"Error adding article from feed {feed_id}: {e}")
+
+        feed.next_update_time = calculate_next_update_time(feed_id)
+        db.commit()
 
 
 def _create_article(article, feed_id: int) -> database.Article:
@@ -161,5 +170,45 @@ def update_all() -> None:
     with database.get_session() as db:
         feeds = db.query(database.Feed).all()
     logger.info(f"Updating {len(feeds)} feeds")
+
     for feed in feeds:
-        update(feed.id)
+        if feed.next_update_time is None or feed.next_update_time <= now():
+            update(feed.id)
+        else:
+            logger.info(f"Skipping feed {feed.id} ({feed.title}) until next update time {feed.next_update_time}")
+
+
+def calculate_next_update_time(feed_id: int) -> int:
+    """Calculate the next update time based on the frequency of the last five posts.
+
+    :param feed_id: The ID of the feed to calculate the next update time for.
+    :returns: The next update time in seconds since the epoch.
+    """
+    with database.get_session() as db:
+        articles = (
+            db.query(database.Article)
+            .filter(database.Article.feed_id == feed_id)
+            .order_by(database.Article.pub_date.desc())
+            .limit(5)
+            .all()
+        )
+
+    if len(articles) < 2:
+        return now() + one_day  # Default to 1 day if there are less than 2 articles
+
+    avg_time_diff = (now() - articles[-1].pub_date) / len(articles)  # type: ignore
+    logger.info(f"Average post frequency for feed {feed_id}: {avg_time_diff}s")
+
+    if avg_time_diff <= one_hour:
+        next_update_in = five_minutes
+    elif avg_time_diff <= six_hours:
+        next_update_in = one_hour
+    elif avg_time_diff <= twelve_hours:
+        next_update_in = six_hours
+    elif avg_time_diff <= one_day:
+        next_update_in = twelve_hours
+    else:
+        next_update_in = one_day
+    logger.info(f"Next update scheduled in {next_update_in}s")
+
+    return now() + next_update_in
