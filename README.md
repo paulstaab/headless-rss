@@ -30,12 +30,13 @@ docker run -d --rm --user 9999 --init \
   --publish 8000:8000 \
   --env USERNAME=myuser \
   --env PASSWORD=mypassword \
-  --env FEED_UPDATE_FREQUENCY=15 \
   ghcr.io/paulstaab/headless-rss:latest
 ```
 
 The `USERNAME` and `PASSWORD` environment are optional to enable authentication.
-The `FEED_UPDATE_FREQUENCY` environment variable is optional to set the update frequency in minutes (default is 15 minutes).
+
+The `FEED_UPDATE_FREQUENCY_MIN` environment variable is optional to set the update frequency for feeds
+in minutes (default is 15 minutes).
 
 
 ## Contribution Guidelines
