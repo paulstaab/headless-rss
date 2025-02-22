@@ -10,8 +10,9 @@ from src import database
 logger = logging.getLogger(__name__)
 
 five_minutes = 300
+thirty_minutes = 1_800
 one_hour = 3_600
-six_hours = 21_600
+four_hours = 14_400
 twelve_hours = 43_200
 one_day = 86_400
 
@@ -68,7 +69,7 @@ def update(feed_id: int, max_articles: int = 50) -> None:
         feed = db.query(database.Feed).get(feed_id)
         if not feed:
             raise ValueError(f"Feed with ID {feed_id} does not exist")
-        logger.info(f"Updating feed {feed_id} ({feed.title})")
+        logger.info(f"Feed {feed_id} ({feed.title}): Updating feed")
 
         try:
             parsed_feed = _parse(feed.url)
@@ -175,40 +176,44 @@ def update_all() -> None:
         if feed.next_update_time is None or feed.next_update_time <= now():
             update(feed.id)
         else:
-            logger.info(f"Skipping feed {feed.id} ({feed.title}) until next update time {feed.next_update_time}")
+            logger.info(
+                f"Feed {feed.id} ({feed.title}): Skipping. "
+                f"Next update scheduled in {(feed.next_update_time - now()) / 60} min."
+            )
 
 
 def calculate_next_update_time(feed_id: int) -> int:
     """Calculate the next update time based on the frequency of the last five posts.
 
+    Use the rolling average number of articles per day over the last week to determine the next update time.
+
     :param feed_id: The ID of the feed to calculate the next update time for.
     :returns: The next update time in seconds since the epoch.
     """
     with database.get_session() as db:
-        articles = (
+        avg_articles_per_day = (
             db.query(database.Article)
             .filter(database.Article.feed_id == feed_id)
-            .order_by(database.Article.pub_date.desc())
-            .limit(5)
-            .all()
+            .filter(database.Article.pub_date > now() - 7 * one_day)
+            .count()
+            / 7
         )
 
-    if len(articles) < 2:
-        return now() + one_day  # Default to 1 day if there are less than 2 articles
-
-    avg_time_diff = (now() - articles[-1].pub_date) / len(articles)  # type: ignore
-    logger.info(f"Average post frequency for feed {feed_id}: {avg_time_diff}s")
-
-    if avg_time_diff <= one_hour:
-        next_update_in = five_minutes
-    elif avg_time_diff <= six_hours:
-        next_update_in = one_hour
-    elif avg_time_diff <= twelve_hours:
-        next_update_in = six_hours
-    elif avg_time_diff <= one_day:
-        next_update_in = twelve_hours
-    else:
+    if avg_articles_per_day <= 0.5:
         next_update_in = one_day
-    logger.info(f"Next update scheduled in {next_update_in}s")
+    elif avg_articles_per_day <= 1:
+        next_update_in = twelve_hours
+    elif avg_articles_per_day <= 2:
+        next_update_in = four_hours
+    elif avg_articles_per_day <= 6:
+        next_update_in = one_hour
+    elif avg_articles_per_day <= 12:
+        next_update_in = thirty_minutes
+    else:
+        next_update_in = five_minutes
+    logger.info(
+        f"Feed {feed_id} has {avg_articles_per_day:.2f} articles per day on average. "
+        f"Next update scheduled in {next_update_in / 60} min."
+    )
 
     return now() + next_update_in
