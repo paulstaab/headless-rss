@@ -205,8 +205,8 @@ def calculate_next_update_time(feed_id: int) -> int:
         # Check feeds at 4x of the historical average daily frequency.
         # We use the 4x to account that for variations of the frequency during the day.
         next_update_in = round(one_day / avg_articles_per_day / 4)
-        # But we check at least every 12h, again with some jitter
-        next_update_in = min(next_update_in, twelve_hours) + random.randint(-thirty_minutes, thirty_minutes)
+        # But we check at least every 12h
+        next_update_in = min(next_update_in, twelve_hours)
     logger.info(
         f"Feed {feed_id} has {avg_articles_per_day:.2f} articles per day on average. "
         f"Next update scheduled in {next_update_in / 60:.1f} min."
