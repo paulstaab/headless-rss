@@ -178,7 +178,7 @@ def update_all() -> None:
         else:
             logger.info(
                 f"Feed {feed.id} ({feed.title}): Skipping. "
-                f"Next update scheduled in {(feed.next_update_time - now()) / 60} min."
+                f"Next update scheduled in {(feed.next_update_time - now()) / 60:.1f} min."
             )
 
 
@@ -213,7 +213,7 @@ def calculate_next_update_time(feed_id: int) -> int:
         next_update_in = five_minutes
     logger.info(
         f"Feed {feed_id} has {avg_articles_per_day:.2f} articles per day on average. "
-        f"Next update scheduled in {next_update_in / 60} min."
+        f"Next update scheduled in {next_update_in / 60:.1f} min."
     )
 
     return now() + next_update_in
