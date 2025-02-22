@@ -3,8 +3,8 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
 from fastapi import FastAPI
+from fastapi_utilities import repeat_every  # type: ignore
 
 from src import database, feed
 
@@ -22,15 +22,9 @@ async def lifespan(app: FastAPI):
     :param app: The FastAPI application instance.
     """
     database.init(Path("data/headless-rss.sqlite3"))
-
-    scheduler = BackgroundScheduler()
-    feed_update_frequency = int(os.getenv("FEED_UPDATE_FREQUENCY", 15))
-    scheduler.add_job(feed.update_all(), "interval", minutes=feed_update_frequency)  # type: ignore
-    scheduler.start()
+    await update_feeds()
 
     yield
-
-    scheduler.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -39,6 +33,12 @@ app.include_router(nextcloud_router, prefix="/index.php/apps/news/api")
 
 
 @app.get("/status")
-async def status():
+def status():
     """Status endpoint to check if the service is running."""
     return {"status": "ok"}
+
+
+@repeat_every(seconds=int(os.getenv("FEED_UPDATE_FREQUENCY_MIN", 15)) * 60)
+async def update_feeds() -> None:
+    """Update all feeds."""
+    feed.update_all()
