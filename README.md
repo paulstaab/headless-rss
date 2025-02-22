@@ -30,16 +30,12 @@ docker run -d --rm --user 9999 --init \
   --publish 8000:8000 \
   --env USERNAME=myuser \
   --env PASSWORD=mypassword \
+  --env FEED_UPDATE_FREQUENCY=15 \
   ghcr.io/paulstaab/headless-rss:latest
 ```
 
 The `USERNAME` and `PASSWORD` environment are optional to enable authentication.
-
-Additionally, you need to setup some kind of cronjob for
-```
-docker exec -ti headless_rss /app/docker/entrypoint update
-```
-to collect the feeds regularly.
+The `FEED_UPDATE_FREQUENCY` environment variable is optional to set the update frequency in minutes (default is 15 minutes).
 
 
 ## Contribution Guidelines
