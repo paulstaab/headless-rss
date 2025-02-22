@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 from hashlib import md5
 from time import mktime
@@ -9,10 +10,7 @@ from src import database
 
 logger = logging.getLogger(__name__)
 
-five_minutes = 300
 thirty_minutes = 1_800
-one_hour = 3_600
-four_hours = 14_400
 twelve_hours = 43_200
 one_day = 86_400
 
@@ -199,18 +197,16 @@ def calculate_next_update_time(feed_id: int) -> int:
             / 7
         )
 
-    if avg_articles_per_day <= 0.5:
-        next_update_in = one_day
-    elif avg_articles_per_day <= 1:
-        next_update_in = twelve_hours
-    elif avg_articles_per_day <= 2:
-        next_update_in = four_hours
-    elif avg_articles_per_day <= 6:
-        next_update_in = one_hour
-    elif avg_articles_per_day <= 12:
-        next_update_in = thirty_minutes
+    if avg_articles_per_day <= 0.1:
+        # Check daily if no article was published in the last week
+        # We add a bit of jitter to avoid all feeds being checked at the same time
+        next_update_in = one_day + random.randint(-thirty_minutes, thirty_minutes)
     else:
-        next_update_in = five_minutes
+        # Check feeds at 4x of the historical average daily frequency.
+        # We use the 4x to account that for variations of the frequency during the day.
+        next_update_in = round(one_day / avg_articles_per_day / 4)
+        # But we check at least every 12h, again with some jitter
+        next_update_in = min(next_update_in, twelve_hours) + random.randint(-thirty_minutes, thirty_minutes)
     logger.info(
         f"Feed {feed_id} has {avg_articles_per_day:.2f} articles per day on average. "
         f"Next update scheduled in {next_update_in / 60:.1f} min."
