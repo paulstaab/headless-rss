@@ -7,12 +7,25 @@ from time import mktime
 import feedparser
 
 from src import database
+from src.folder import NoFolderError
 
 logger = logging.getLogger(__name__)
 
 thirty_minutes = 1_800
 twelve_hours = 43_200
 one_day = 86_400
+
+
+class NoFeedError(Exception):
+    """Raised when a feed is not found in the database."""
+
+
+class FeedExistsError(Exception):
+    """Raised when a feed would be duplicated."""
+
+
+class FeedParsingError(Exception):
+    """Raised when there is an error parsing the feed."""
 
 
 def now() -> int:
@@ -23,12 +36,13 @@ def now() -> int:
     return int(time.time())
 
 
-def create(url: str, folder_id: int | None = None) -> database.Feed:
+def _create(url: str, folder_id: int | None = None) -> database.Feed:
     """Create a new feed in the database.
 
     :param url: The URL of the feed.
     :param folder_id: The ID of the folder to associate with the feed.
     :returns: The created feed.
+    :raises FeedParsingError: If there is an error parsing the feed.
     """
     logger.info(f"Creating feed for URL: {url}")
     parsed_feed = _parse(url)
@@ -43,16 +57,16 @@ def create(url: str, folder_id: int | None = None) -> database.Feed:
     )
 
 
-def _parse(url: str):
+def _parse(url: str) -> feedparser.FeedParserDict:
     """Parse the feed from the given URL.
 
     :param url: The URL of the feed to parse.
     :returns: The parsed feed.
-    :raises ValueError: If there is an error parsing the feed.
+    :raises FeedParsingError: If there is an error parsing the feed.
     """
     parsed_feed = feedparser.parse(url)
     if parsed_feed.bozo:
-        raise ValueError(f"Error parsing feed: {parsed_feed.bozo_exception}")
+        raise FeedParsingError(f"Error parsing feed from `{url}`: {parsed_feed.bozo_exception}")
     return parsed_feed
 
 
@@ -61,12 +75,13 @@ def update(feed_id: int, max_articles: int = 50) -> None:
 
     :param feed_id: The ID of the feed to update.
     :param max_articles: The maximum number of articles to update.
-    :raises ValueError: If the feed does not exist.
+    :raises NoFeedError: If the feed does not exist.
+    :raises FeedParsingError: If there is an error parsing the feed.
     """
     with database.get_session() as db:
         feed = db.query(database.Feed).get(feed_id)
         if not feed:
-            raise ValueError(f"Feed with ID {feed_id} does not exist")
+            raise NoFeedError(f"Feed {feed_id} does not exist")
         logger.info(f"Feed {feed_id} ({feed.title}): Updating feed")
 
         try:
@@ -94,7 +109,7 @@ def update(feed_id: int, max_articles: int = 50) -> None:
             except Exception as e:
                 logger.error(f"Error adding article from feed {feed_id}: {e}")
 
-        feed.next_update_time = calculate_next_update_time(feed_id)
+        feed.next_update_time = _calculate_next_update_time(feed_id)
         db.commit()
 
 
@@ -180,7 +195,7 @@ def update_all() -> None:
             )
 
 
-def calculate_next_update_time(feed_id: int) -> int:
+def _calculate_next_update_time(feed_id: int) -> int:
     """Calculate the next update time based on the frequency of the last five posts.
 
     Use the rolling average number of articles per day over the last week to determine the next update time.
@@ -207,9 +222,106 @@ def calculate_next_update_time(feed_id: int) -> int:
         next_update_in = round(one_day / avg_articles_per_day / 4)
         # But we check at least every 12h
         next_update_in = min(next_update_in, twelve_hours)
+
     logger.info(
         f"Feed {feed_id} has {avg_articles_per_day:.2f} articles per day on average. "
         f"Next update scheduled in {next_update_in / 60:.1f} min."
     )
 
     return now() + next_update_in
+
+
+def get_all() -> list[database.Feed]:
+    """Fetch all feeds from the database.
+
+    :returns: A list of all feeds in the database.
+    """
+    with database.get_session() as db:
+        return db.query(database.Feed).all()
+
+
+def add(url: str, folder_id: int | None) -> database.Feed:
+    """Add a new feed.
+
+    :param url: The URL of the feed to add.
+    :param folder_id: The ID of the folder to associate with the feed.
+    :returns: The created feed.
+    :raises FeedExistsError: If the feed already exists.
+    :raises NoFolderError: If the folder does not exist.
+    :raises FeedParsingError: If there is an error parsing the feed.
+    """
+    with database.get_session() as db:
+        existing_feed = db.query(database.Feed).filter(database.Feed.url == url).first()
+        if existing_feed:
+            raise FeedExistsError("Feed already exists")
+
+        if folder_id == 0:
+            folder_id = None
+
+        if folder_id is not None:
+            folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+            if not folder:
+                raise NoFolderError(f"Folder with ID {folder_id} does not exist")
+
+    new_feed = _create(url=url, folder_id=folder_id)
+    with database.get_session() as db:
+        db.add(new_feed)
+        db.commit()
+        db.refresh(new_feed)
+
+    update(new_feed.id, max_articles=10)
+    return new_feed
+
+
+def delete(feed_id: int) -> None:
+    """Delete a feed from the database.
+
+    :param feed_id: The ID of the feed to delete.
+    :raises NoFeedError: If the feed does not exist.
+    """
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise NoFeedError(f"Feed {feed_id} not found")
+        db.delete(feed)
+        db.commit()
+
+
+def move_to_folder(feed_id: int, folder_id: int | None) -> None:
+    """Move a feed to a different folder.
+
+    :param feed_id: The ID of the feed to move.
+    :param folder_id: The ID of the folder to move the feed to.
+    :raises NoFeedError: If the feed does not exist.
+    :raises NoFolderError: If the folder does not exist.
+    """
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise NoFeedError(f"Feed {feed_id} not found")
+
+        if folder_id is not None:
+            folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+            if not folder:
+                raise NoFolderError(f"Folder with ID {folder_id} does not exist")
+
+        feed.folder_id = folder_id
+        db.commit()
+        db.refresh(feed)
+
+
+def rename(feed_id: int, new_title: str) -> None:
+    """Rename a feed.
+
+    :param feed_id: The ID of the feed to rename.
+    :param new_title: The new title of the feed.
+    :raises NoFeedError: If the feed does not exist.
+    """
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
+        if not feed:
+            raise NoFeedError(f"Feed {feed_id} not found")
+
+        feed.title = new_title
+        db.commit()
+        db.refresh(feed)

@@ -2,13 +2,12 @@
 
 import enum
 import logging
-import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from src import database
+from src import article
 
 logger = logging.getLogger(__name__)
 
@@ -85,38 +84,43 @@ def get_items(
     :returns: A list of items matching the criteria.
     """
     select_method = FeedSelectionMethod(type)
-    logger.info(
-        f"Getting items for {select_method} = {id} "
-        f"({batchSize=}, {offset=}, {lastModified=}, {getRead=}, {oldestFirst=})"
-    )
-    with database.get_session() as db:
-        query = db.query(database.Article)
 
-        if not getRead:
-            query = query.filter(database.Article.unread)
-
-        if offset > 0:
-            query = query.filter(database.Article.id <= offset)
-
-        if lastModified > 0:
-            query = query.filter(database.Article.last_modified >= lastModified)
-
-        if select_method == FeedSelectionMethod.FEED:
-            query = query.filter(database.Article.feed_id == id)
-        elif select_method == FeedSelectionMethod.FOLDER:
-            query = query.join(database.Feed).filter(database.Feed.folder_id == id)
-        elif select_method == FeedSelectionMethod.STARRED:
-            query = query.filter(database.Article.starred)
-        elif select_method == FeedSelectionMethod.ALL:
-            pass
-
-        query = query.order_by(database.Article.id.asc() if oldestFirst else database.Article.id.desc())
-
-        if batchSize > 0:
-            query = query.limit(batchSize)
-
-        items = query.all()
-        logger.info(f"Found {len(items)} items")
+    if select_method == FeedSelectionMethod.FEED:
+        items = article.get_by_feed(
+            feed_id=id,
+            max_results=batchSize,
+            newest_item_id=offset,
+            get_read=getRead,
+            oldest_first=oldestFirst,
+            last_modified=lastModified,
+        )
+    elif select_method == FeedSelectionMethod.FOLDER:
+        items = article.get_by_folder(
+            folder_id=id,
+            max_results=batchSize,
+            newest_item_id=offset,
+            get_read=getRead,
+            oldest_first=oldestFirst,
+            last_modified=lastModified,
+        )
+    elif select_method == FeedSelectionMethod.STARRED:
+        items = article.get_starred(
+            max_results=batchSize,
+            newest_item_id=offset,
+            get_read=getRead,
+            oldest_first=oldestFirst,
+            last_modified=lastModified,
+        )
+    elif select_method == FeedSelectionMethod.ALL:
+        items = article.get_all(
+            max_results=batchSize,
+            newest_item_id=offset,
+            get_read=getRead,
+            oldest_first=oldestFirst,
+            last_modified=lastModified,
+        )
+    else:
+        raise NotImplementedError(f"Article selection method {select_method} is not implemented")
 
     return ItemGetOut(items=[Article.model_validate(item) for item in items])
 
@@ -127,28 +131,26 @@ def get_updated_items(
     type: int,
     id: int,
 ) -> ItemGetOut:
-    """Fetch updated items based on the provided parameters.
+    """Fetch items based on the provided parameters.
 
     :param lastModified: The timestamp to filter items by last modified date.
     :param type: The type of selection method (0: FEED, 1: FOLDER, 2: STARRED, 3: ALL).
     :param id: The ID of the feed or folder.
-    :returns: A list of updated items matching the criteria.
+    :returns: A list of items matching the criteria.
     """
     select_method = FeedSelectionMethod(type)
-    logger.info(f"Getting updated items for {select_method} = {id} (lastModified={lastModified})")
-    with database.get_session() as db:
-        query = db.query(database.Article).filter(database.Article.last_modified >= lastModified)
 
-        if select_method == FeedSelectionMethod.FEED:
-            query = query.filter(database.Article.feed_id == id)
-        elif select_method == FeedSelectionMethod.FOLDER:
-            query = query.join(database.Feed).filter(database.Feed.folder_id == id)
-        elif select_method == FeedSelectionMethod.STARRED:
-            query = query.filter(database.Article.starred)
-        elif select_method == FeedSelectionMethod.ALL:
-            pass
+    if select_method == FeedSelectionMethod.FEED:
+        items = article.get_by_feed(feed_id=id, oldest_first=False, last_modified=lastModified)
+    elif select_method == FeedSelectionMethod.FOLDER:
+        items = article.get_by_folder(folder_id=id, oldest_first=False, last_modified=lastModified)
+    elif select_method == FeedSelectionMethod.STARRED:
+        items = article.get_starred(oldest_first=False, last_modified=lastModified)
+    elif select_method == FeedSelectionMethod.ALL:
+        items = article.get_all(oldest_first=False, last_modified=lastModified)
+    else:
+        raise NotImplementedError(f"Article selection method {select_method} is not implemented")
 
-        items = query.all()
     return ItemGetOut(items=[Article.model_validate(item) for item in items])
 
 
@@ -160,13 +162,9 @@ def mark_item_as_read(item_id: int):
     :raises HTTPException: If the item is not found.
     """
     logger.info(f"Marking item {item_id} as read")
-    db = database.get_session()
-    item = db.query(database.Article).filter(database.Article.id == item_id).first()
-    if not item:
+    n_articles = article.mark_as_read([item_id])
+    if n_articles == 0:
         raise HTTPException(status_code=404, detail="Item not found")
-    item.unread = False
-    item.last_modified = int(time.time())
-    db.commit()
 
 
 class ItemIDListIn(BaseModel):
@@ -185,13 +183,8 @@ def mark_multiple_items_as_read(input: ItemIDListIn) -> None:
 
     :param input: The list of item IDs to mark as read.
     """
-    logger.info(f"Marking {len(input.item_ids)} items as read")
-    with database.get_session() as db:
-        items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
-        for item in items:
-            item.unread = False
-            item.last_modified = int(time.time())
-        db.commit()
+    logger.info(f"Marking multiple items as read: {input.item_ids}")
+    article.mark_as_read(input.item_ids)
 
 
 @router.post("/{item_id}/unread")
@@ -202,13 +195,9 @@ def mark_item_as_unread(item_id: int) -> None:
     :raises HTTPException: If the item is not found.
     """
     logger.info(f"Marking item {item_id} as unread")
-    with database.get_session() as db:
-        item = db.query(database.Article).filter(database.Article.id == item_id).first()
-        if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
-        item.unread = True
-        item.last_modified = int(time.time())
-        db.commit()
+    n_articles = article.mark_as_unread([item_id])
+    if n_articles == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
 
 
 @router.post("/unread/multiple")
@@ -217,13 +206,8 @@ def mark_multiple_items_as_unread(input: ItemIDListIn) -> None:
 
     :param input: The list of item IDs to mark as unread.
     """
-    logger.info(f"Marking {len(input.item_ids)} items as unread")
-    with database.get_session() as db:
-        items = db.query(database.Article).filter(database.Article.id.in_(input.item_ids)).all()
-        for item in items:
-            item.unread = True
-            item.last_modified = int(time.time())
-        db.commit()
+    logger.info(f"Marking multiple items as unread: {input.item_ids}")
+    article.mark_as_unread(input.item_ids)
 
 
 @router.post("/star/multiple")
@@ -234,14 +218,7 @@ def mark_multiple_items_as_starred(input: ItemIDListIn) -> None:
     :raises HTTPException: If any item is not found.
     """
     logger.info(f"Marking {len(input.item_ids)} items as starred")
-    with database.get_session() as db:
-        for item_id in input.item_ids:
-            article = db.query(database.Article).filter(database.Article.id == item_id).first()
-            if not article:
-                raise HTTPException(status_code=404, detail="Item not found")
-            article.starred = True
-            article.last_modified = int(time.time())
-        db.commit()
+    article.mark_as_starred(input.item_ids)
 
 
 @router.post("/{item_id}/star")
@@ -252,13 +229,9 @@ def mark_item_as_starred(item_id: int) -> None:
     :raises HTTPException: If the item is not found.
     """
     logger.info(f"Marking item {item_id} as starred")
-    with database.get_session() as db:
-        item = db.query(database.Article).filter(database.Article.id == item_id).first()
-        if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
-        item.starred = True
-        item.last_modified = int(time.time())
-        db.commit()
+    n_articles = article.mark_as_starred([item_id])
+    if n_articles == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
 
 
 @router.post("/{item_id}/unstar")
@@ -269,13 +242,9 @@ def mark_item_as_unstarred(item_id: int) -> None:
     :raises HTTPException: If the item is not found.
     """
     logger.info(f"Marking item {item_id} as unstarred")
-    with database.get_session() as db:
-        item = db.query(database.Article).filter(database.Article.id == item_id).first()
-        if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
-        item.starred = False
-        item.last_modified = int(time.time())
-        db.commit()
+    n_articles = article.mark_as_unstarred([item_id])
+    if n_articles == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
 
 
 @router.post("/unstar/multiple")
@@ -286,14 +255,7 @@ def mark_multiple_items_as_unstarred(input: ItemIDListIn) -> None:
     :raises HTTPException: If any item is not found.
     """
     logger.info(f"Marking {len(input.item_ids)} items as unstarred")
-    with database.get_session() as db:
-        for item_id in input.item_ids:
-            article = db.query(database.Article).filter(database.Article.id == item_id).first()
-            if not article:
-                raise HTTPException(status_code=404, detail="Item not found")
-            article.starred = False
-            article.last_modified = int(time.time())
-        db.commit()
+    article.mark_as_unstarred(input.item_ids)
 
 
 class MarkAllItemsReadIn(BaseModel):
@@ -313,9 +275,4 @@ def mark_all_items_as_read(input: MarkAllItemsReadIn):
     :param input: The ID of the newest item to mark as read.
     """
     logger.info(f"Marking all items as read until {input.newest_item_id}")
-    with database.get_session() as db:
-        items = db.query(database.Article).filter(database.Article.id <= input.newest_item_id).all()
-        for item in items:
-            item.unread = False
-            item.last_modified = int(time.time())
-        db.commit()
+    article.mark_all_as_read(input.newest_item_id)
