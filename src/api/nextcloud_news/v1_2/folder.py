@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from src import database
+from src import database, folder
 
 router = APIRouter(tags=["folders"])
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def get_folders() -> FolderGetOut:
     logger.info("Fetching all folders")
     with database.get_session() as db:
         folders = db.query(database.Folder).all()
-    return FolderGetOut(folders=[Folder.model_validate(folder) for folder in folders])
+    return FolderGetOut(folders=[Folder.model_validate(f) for f in folders])
 
 
 class FolderPostIn(BaseModel):
@@ -72,21 +72,12 @@ def create_folder(input: FolderPostIn):
     :raises HTTPException: If the folder already exists or the name is invalid.
     """
     logger.info(f"Creating folder with name `{input.name}`")
-    with database.get_session() as db:
-        existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
-    if existing_folder:
-        logger.error(f"Folder with name {input.name} already exists.")
-        raise HTTPException(status_code=409, detail="Folder already exists")
-
-    if not input.name:
-        logger.error("Folder name is invalid (empty).")
-        raise HTTPException(status_code=422, detail="Folder name is invalid")
-
-    with database.get_session() as db:
-        new_folder = database.Folder(name=input.name)
-        db.add(new_folder)
-        db.commit()
-        db.refresh(new_folder)
+    try:
+        new_folder = folder.create(input.name)
+    except folder.FolderExistsError:
+        raise HTTPException(status_code=409, detail="Folder already exists") from None
+    except folder.InvalidFolderNameError:
+        raise HTTPException(status_code=422, detail="Folder name is invalid") from None
 
     return FolderPostOut(folders=[Folder.model_validate(new_folder)])
 
@@ -99,13 +90,10 @@ def delete_folder(folder_id: int):
     :raises HTTPException: If the folder is not found.
     """
     logger.info(f"Deleting folder with ID {folder_id}")
-    with database.get_session() as db:
-        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-        if not folder:
-            raise HTTPException(status_code=404, detail="Folder not found")
-        db.query(database.Feed).filter(database.Feed.folder_id == folder_id).delete()
-        db.delete(folder)
-        db.commit()
+    try:
+        folder.delete(folder_id)
+    except folder.NoFolderError:
+        raise HTTPException(status_code=404, detail="Folder not found") from None
 
 
 class FolderPutIn(BaseModel):
@@ -127,23 +115,14 @@ def rename_folder(folder_id: int, input: FolderPutIn):
     :raises HTTPException: If the folder is not found or the name is invalid.
     """
     logger.info(f"Renaming folder with ID {folder_id} to `{input.name}`")
-    with database.get_session() as db:
-        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-        if not folder:
-            raise HTTPException(status_code=404, detail="Folder not found")
-
-        existing_folder = db.query(database.Folder).filter(database.Folder.name == input.name).first()
-        if existing_folder:
-            logger.error(f"Folder with name {input.name} already exists.")
-            raise HTTPException(status_code=409, detail="Folder already exists")
-
-        if not input.name:
-            logger.error("Folder name is invalid (empty).")
-            raise HTTPException(status_code=422, detail="Folder name is invalid")
-
-        folder.name = input.name
-        db.commit()
-        db.refresh(folder)
+    try:
+        folder.rename(folder_id, input.name)
+    except folder.NoFolderError:
+        raise HTTPException(status_code=404, detail="Folder not found") from None
+    except folder.FolderExistsError:
+        raise HTTPException(status_code=409, detail="Folder already exists") from None
+    except folder.InvalidFolderNameError:
+        raise HTTPException(status_code=422, detail="Folder name is invalid") from None
 
 
 class MarkItemsReadIn(BaseModel):

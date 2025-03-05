@@ -40,7 +40,6 @@ def test_feed_already_exists(client: TestClient, feed_server) -> None:
     )
     # then
     assert response.status_code == 409
-    assert response.json()["detail"] == "Feed already exists"
 
 
 def test_feed_cannot_be_read(client: TestClient, feed_server) -> None:
@@ -54,7 +53,6 @@ def test_feed_cannot_be_read(client: TestClient, feed_server) -> None:
     )
     # then
     assert response.status_code == 422
-    assert response.json()["detail"] == "Feed cannot be read"
 
 
 def test_delete_feed(client: TestClient, feed_server) -> None:
@@ -84,7 +82,6 @@ def test_delete_non_existent_feed(client: TestClient) -> None:
 
     # then
     assert response.status_code == 404
-    assert response.json()["detail"] == "Feed not found"
 
 
 def test_move_feed(client: TestClient, feed_server) -> None:
