@@ -38,8 +38,7 @@ def get_folders() -> FolderGetOut:
     :returns: A list of all folders.
     """
     logger.info("Fetching all folders")
-    with database.get_session() as db:
-        folders = db.query(database.Folder).all()
+    folders = [f for f in folder.get_all() if f.name is not None]
     return FolderGetOut(folders=[Folder.model_validate(folder) for folder in folders])
 
 

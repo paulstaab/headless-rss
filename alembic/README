@@ -1,1 +1,7 @@
 Database Migrations for headless-rss' Sqlite Database
+
+To auto-generate a new Alembic migration using VS Code, follow these steps:
+
+1. Open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P on Mac).
+2. Type "Tasks: Run Task" and select it.
+3. Choose "Generate Alembic Migration" from the list of tasks.
