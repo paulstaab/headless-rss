@@ -183,32 +183,3 @@ def mark_all_as_read(newest_item_id: int) -> int:
             item.last_modified = int(time.time())
         db.commit()
         return len(items)
-
-
-def clean_up_old_articles(feed_id: int, feed_articles) -> None:
-    """Clean up old articles from the database.
-
-    This function deletes articles that are not included in the feed anymore, read, not starred,
-    and have been last updated more than 90 days ago.
-
-    :param feed_id: The ID of the feed to clean up articles for.
-    :param feed_articles: The articles from the feed.
-    """
-    feed_article_guids = {article["id"] for article in feed_articles}
-    ninety_days_ago = int(time.time()) - 90 * 24 * 60 * 60
-    
-    with database.get_session() as db:
-        articles_to_delete = (
-            db.query(database.Article)
-            .filter(database.Article.feed_id == feed_id)
-            .filter(database.Article.guid.notin_(feed_article_guids))
-            .filter(database.Article.unread == False)  # noqa: E712
-            .filter(database.Article.starred == False)  # noqa: E712
-            .filter(database.Article.last_modified < ninety_days_ago)
-            .all()
-        )
-
-        for article in articles_to_delete:
-            db.delete(article)
-
-        db.commit()
