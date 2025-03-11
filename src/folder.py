@@ -13,6 +13,20 @@ class InvalidFolderNameError(Exception):
     """Raised when a folder name is invalid."""
 
 
+def get_all(include_root: bool = True) -> list[database.Folder]:
+    """Fetch all folders from the database.
+
+    :returns: A list of all folders.
+    """
+    logger.info("Fetching all folders")
+    with database.get_session() as db:
+        query = db.query(database.Folder)
+        if not include_root:
+            query = query.filter(database.Folder.is_root == False)  # noqa: E712
+        folders = query.all()
+    return folders
+
+
 def create(name: str) -> database.Folder:
     """Create a new folder.
 
@@ -90,3 +104,19 @@ def rename(folder_id: int, new_name: str):
 
         folder.name = new_name
         db.commit()
+
+
+def get_root_folder_id() -> int:
+    """Get the top-level folder (folder with name None). If it doesn't exist, create it.
+
+    :returns: The root folder.
+    """
+    with database.get_session() as db:
+        root_folder = db.query(database.Folder).filter(database.Folder.is_root).first()  # noqa: E711
+        if not root_folder:
+            logger.info("Root folder not found, creating a new one.")
+            root_folder = database.Folder(name="", is_root=True)
+            db.add(root_folder)
+            db.commit()
+            db.refresh(root_folder)
+        return root_folder.id

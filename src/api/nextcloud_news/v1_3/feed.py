@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from src import article, feed
+from src import article, feed, folder
 from src.folder import NoFolderError
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,10 @@ def get_feeds() -> FeedGetOut:
     """Fetch all feeds from the database."""
     logger.info("Fetching all feeds")
     feeds = feed.get_all()
+    root_folder_id = folder.get_root_folder_id()
+    for f in feeds:
+        if f.folder_id == root_folder_id:
+            f.folder_id = None  # type: ignore
     return FeedGetOut(feeds=[Feed.model_validate(feed) for feed in feeds])
 
 
@@ -80,9 +84,10 @@ class FeedPostOut(BaseModel):
 @router.post("", response_model=FeedPostOut)
 def add_feed(input: FeedPostIn):
     """Add a new feed."""
-    logger.info(f"Adding feed with URL `{input.url}` to folder {input.folder_id}")
+    folder_id = input.folder_id or folder.get_root_folder_id()
+    logger.info(f"Adding feed with URL `{input.url}` to folder {folder_id}")
     try:
-        new_feed = feed.add(url=input.url, folder_id=input.folder_id)
+        new_feed = feed.add(url=input.url, folder_id=folder_id)
     except feed.FeedExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except NoFolderError as e:
@@ -117,8 +122,9 @@ class MoveFeedIn(BaseModel):
 def move_feed(feed_id: int, input: MoveFeedIn):
     """Move a feed to a different folder."""
     logger.info(f"Moving feed with ID {feed_id} to folder {input.folder_id}")
+    folder_id = input.folder_id or folder.get_root_folder_id()
     try:
-        feed.move_to_folder(feed_id, input.folder_id)
+        feed.move_to_folder(feed_id, folder_id)
     except feed.NoFeedError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except NoFolderError as e:

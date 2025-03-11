@@ -38,7 +38,7 @@ def upgrade() -> None:
         sa.Column("favicon_link", sa.String(), nullable=True),
         sa.Column("added", sa.Integer(), nullable=False),
         sa.Column("next_update_time", sa.Integer(), nullable=True),
-        sa.Column("folder_id", sa.Integer(), nullable=True),
+        sa.Column("folder_id", sa.Integer(), nullable=False),
         sa.Column("ordering", sa.Integer(), nullable=False),
         sa.Column("link", sa.String(), nullable=True),
         sa.Column("pinned", sa.Boolean(), nullable=False),

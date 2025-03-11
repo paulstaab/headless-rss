@@ -36,7 +36,7 @@ def now() -> int:
     return int(time.time())
 
 
-def _create(url: str, folder_id: int | None = None) -> database.Feed:
+def _create(url: str, folder_id: int) -> database.Feed:
     """Create a new feed in the database.
 
     :param url: The URL of the feed.
@@ -240,7 +240,7 @@ def get_all() -> list[database.Feed]:
         return db.query(database.Feed).all()
 
 
-def add(url: str, folder_id: int | None) -> database.Feed:
+def add(url: str, folder_id: int) -> database.Feed:
     """Add a new feed.
 
     :param url: The URL of the feed to add.
@@ -255,13 +255,9 @@ def add(url: str, folder_id: int | None) -> database.Feed:
         if existing_feed:
             raise FeedExistsError("Feed already exists")
 
-        if folder_id == 0:
-            folder_id = None
-
-        if folder_id is not None:
-            folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-            if not folder:
-                raise NoFolderError(f"Folder with ID {folder_id} does not exist")
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise NoFolderError(f"Folder with ID {folder_id} does not exist")
 
     new_feed = _create(url=url, folder_id=folder_id)
     with database.get_session() as db:
@@ -287,7 +283,7 @@ def delete(feed_id: int) -> None:
         db.commit()
 
 
-def move_to_folder(feed_id: int, folder_id: int | None) -> None:
+def move_to_folder(feed_id: int, folder_id: int) -> None:
     """Move a feed to a different folder.
 
     :param feed_id: The ID of the feed to move.
@@ -300,10 +296,9 @@ def move_to_folder(feed_id: int, folder_id: int | None) -> None:
         if not feed:
             raise NoFeedError(f"Feed {feed_id} not found")
 
-        if folder_id is not None:
-            folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
-            if not folder:
-                raise NoFolderError(f"Folder with ID {folder_id} does not exist")
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise NoFolderError(f"Folder with ID {folder_id} does not exist")
 
         feed.folder_id = folder_id
         db.commit()

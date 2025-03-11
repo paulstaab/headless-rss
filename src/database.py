@@ -68,7 +68,7 @@ class Feed(Base):
     favicon_link: Mapped[str | None] = mapped_column(default=None)
     added: Mapped[int]
     next_update_time: Mapped[int | None] = mapped_column(default=None)
-    folder_id: Mapped[int | None] = mapped_column(ForeignKey("folder.id"), nullable=True)
+    folder_id: Mapped[int] = mapped_column(ForeignKey("folder.id"), nullable=False)
     ordering: Mapped[int] = mapped_column(default=0)
     link: Mapped[str | None] = mapped_column(default=None)
     pinned: Mapped[bool] = mapped_column(default=False)
@@ -81,3 +81,4 @@ class Folder(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
+    is_root: Mapped[bool] = mapped_column(default=False)

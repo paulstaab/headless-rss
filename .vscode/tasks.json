@@ -16,6 +16,18 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "Generate Alembic Migration",
+            "type": "shell",
+            "command": "alembic revision --autogenerate -m \"New migration\"",
+            "problemMatcher": []
+        },
+        {
+            "label": "Execute Migrations",
+            "type": "shell",
+            "command": "alembic upgrade head",
+            "problemMatcher": []
         }
     ]
 }
