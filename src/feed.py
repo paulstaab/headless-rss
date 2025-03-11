@@ -112,6 +112,8 @@ def update(feed_id: int, max_articles: int = 50) -> None:
         feed.next_update_time = _calculate_next_update_time(feed_id)
         db.commit()
 
+    clean_up_old_articles(feed_id, parsed_feed.entries)
+
 
 def _create_article(article, feed_id: int) -> database.Article:
     """Create a new article in the database.
@@ -320,3 +322,31 @@ def rename(feed_id: int, new_title: str) -> None:
         feed.title = new_title
         db.commit()
         db.refresh(feed)
+
+
+def clean_up_old_articles(feed_id: int, feed_articles) -> None:
+    """Clean up old articles from the database.
+    This function deletes articles that are not included in the feed anymore, read, not starred,
+    and have been last updated more than 90 days ago.
+    :param feed_id: The ID of the feed to clean up articles for.
+    :param feed_articles: The articles from the feed.
+    """
+    feed_article_guids = {article["id"] for article in feed_articles}
+    ninety_days_ago = int(time.time()) - 90 * 24 * 60 * 60
+
+    with database.get_session() as db:
+        articles_to_delete = (
+            db.query(database.Article)
+            .filter(database.Article.feed_id == feed_id)
+            .filter(database.Article.last_modified < ninety_days_ago)
+            .filter(database.Article.unread == False)  # noqa: E712
+            .filter(database.Article.starred == False)  # noqa: E712
+            .filter(database.Article.guid.notin_(feed_article_guids))
+            .all()
+        )
+
+        logger.info(f"Removing {len(articles_to_delete)} old articles from database")
+        for article in articles_to_delete:
+            db.delete(article)
+
+        db.commit()
