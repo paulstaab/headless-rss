@@ -338,10 +338,10 @@ def clean_up_old_articles(feed_id: int, feed_articles) -> None:
         articles_to_delete = (
             db.query(database.Article)
             .filter(database.Article.feed_id == feed_id)
-            .filter(database.Article.guid.notin_(feed_article_guids))
+            .filter(database.Article.last_modified < ninety_days_ago)
             .filter(database.Article.unread == False)  # noqa: E712
             .filter(database.Article.starred == False)  # noqa: E712
-            .filter(database.Article.last_modified < ninety_days_ago)
+            .filter(database.Article.guid.notin_(feed_article_guids))
             .all()
         )
 
