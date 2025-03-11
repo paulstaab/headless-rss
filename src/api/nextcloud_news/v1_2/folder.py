@@ -38,7 +38,7 @@ def get_folders() -> FolderGetOut:
     :returns: A list of all folders.
     """
     logger.info("Fetching all folders")
-    folders = [f for f in folder.get_all() if f.name is not None]
+    folders = folder.get_all(include_root=False)
     return FolderGetOut(folders=[Folder.model_validate(f) for f in folders])
 
 

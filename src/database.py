@@ -80,4 +80,5 @@ class Folder(Base):
     __tablename__ = "folder"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(unique=True, nullable=True)
+    name: Mapped[str] = mapped_column(unique=True, nullable=False)
+    is_root: Mapped[bool] = mapped_column(default=False)
