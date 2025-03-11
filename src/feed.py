@@ -182,17 +182,17 @@ def update_all() -> None:
     This function fetches all feeds from the database and updates each one.
     """
     with database.get_session() as db:
-        feeds = db.query(database.Feed).all()
-    logger.info(f"Updating {len(feeds)} feeds")
-
-    for feed in feeds:
-        if feed.next_update_time is None or feed.next_update_time <= now():
-            update(feed.id)
-        else:
-            logger.info(
-                f"Feed {feed.id} ({feed.title}): Skipping. "
-                f"Next update scheduled in {(feed.next_update_time - now()) / 60:.1f} min."
+        feeds_to_update = (
+            db.query(database.Feed)
+            .filter(
+                (database.Feed.next_update_time == None) | (database.Feed.next_update_time <= now())  # noqa: E711
             )
+            .all()
+        )
+    logger.info(f"Updating {len(feeds_to_update)} feeds")
+
+    for feed in feeds_to_update:
+        update(feed.id)
 
 
 def _calculate_next_update_time(feed_id: int) -> int:
