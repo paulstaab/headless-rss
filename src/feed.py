@@ -326,21 +326,15 @@ def rename(feed_id: int, new_title: str) -> None:
 
 def clean_up_old_articles(feed_id: int, feed_articles) -> None:
     """Clean up old articles from the database.
-
     This function deletes articles that are not included in the feed anymore, read, not starred,
     and have been last updated more than 90 days ago.
-
     :param feed_id: The ID of the feed to clean up articles for.
     :param feed_articles: The articles from the feed.
     """
+    feed_article_guids = {article["id"] for article in feed_articles}
+    ninety_days_ago = int(time.time()) - 90 * 24 * 60 * 60
+
     with database.get_session() as db:
-        feed = db.query(database.Feed).get(feed_id)
-        if not feed:
-            raise NoFeedError(f"Feed {feed_id} does not exist")
-
-        feed_article_guids = {article["id"] for article in feed_articles}
-
-        ninety_days_ago = now() - 90 * one_day
         articles_to_delete = (
             db.query(database.Article)
             .filter(database.Article.feed_id == feed_id)
@@ -351,6 +345,7 @@ def clean_up_old_articles(feed_id: int, feed_articles) -> None:
             .all()
         )
 
+        logger.info(f"Removing {len(articles_to_delete)} old articles from database")
         for article in articles_to_delete:
             db.delete(article)
 
