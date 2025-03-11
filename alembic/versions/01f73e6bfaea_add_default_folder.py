@@ -19,7 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("folder", sa.Column("is_root", sa.Boolean(), nullable=False, default=False))
+    op.add_column("folder", sa.Column("is_root", sa.Boolean(), nullable=False, server_default=sa.false()))
     op.execute("INSERT INTO folder (id, name, is_root) VALUES (0, '', true)")
     op.execute("UPDATE feed SET folder_id = 0 WHERE folder_id IS NULL")
 
