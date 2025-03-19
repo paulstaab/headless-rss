@@ -28,4 +28,7 @@ def feed_server(httpserver):
     httpserver.expect_request("/github_releases.atom").respond_with_handler(
         lambda x: _respond_with_file(x, "feeds/github_releases.atom")
     )
+    httpserver.expect_request("/feed_without_ids.xml").respond_with_handler(
+        lambda x: _respond_with_file(x, "feeds/feed_without_ids.xml")
+    )
     return httpserver

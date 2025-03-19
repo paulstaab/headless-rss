@@ -97,22 +97,32 @@ def update(feed_id: int, max_articles: int = 50) -> None:
             feed.last_update_error = None
             db.commit()
 
+        feed_article_guid_hashes = []
+        n_new_articles = 0
+
         for idx, article in enumerate(parsed_feed.entries):
             if idx >= max_articles:
                 break
             try:
-                existing_article = db.query(database.Article).filter_by(guid_hash=_hash(article["id"])).first()
+                db_article = _create_article(article, feed_id)
+                feed_article_guid_hashes.append(db_article.guid_hash)
+
+                existing_article = db.query(database.Article).filter_by(guid_hash=db_article.guid_hash).first()
                 if not existing_article:
-                    db.add(_create_article(article, feed_id))
+                    db.add(db_article)
                     db.commit()
+                    n_new_articles += 1
 
             except Exception as e:
                 logger.error(f"Error adding article from feed {feed_id}: {e}")
 
+        logger.info(
+            f"Feed {feed_id} ({feed.title}): Added {n_new_articles} new articles out of {len(parsed_feed.entries)}"
+        )
         feed.next_update_time = _calculate_next_update_time(feed_id)
         db.commit()
 
-    clean_up_old_articles(feed_id, parsed_feed.entries)
+    clean_up_old_articles(feed_id, feed_article_guid_hashes)
 
 
 def _create_article(article, feed_id: int) -> database.Article:
@@ -125,6 +135,9 @@ def _create_article(article, feed_id: int) -> database.Article:
     content: str | None = article.get("content")[0]["value"] if "content" in article else article.get("summary")
     title: str | None = article.get("title")
     url: str | None = article.get("link")
+    guid: str | None = article.get("id") or article.get("link") or article.get("title")
+    if guid is None:
+        raise ValueError("Article has no ID, link, or title. Failed to create an ID.")
 
     try:
         updated_date = int(mktime(article["updated_parsed"]))
@@ -146,8 +159,8 @@ def _create_article(article, feed_id: int) -> database.Article:
         enclosure_mime=article.get("enclosure_mime"),
         feed_id=feed_id,
         fingerprint=_create_fingerprint(content, title, url),
-        guid=article["id"],
-        guid_hash=md5(article["id"].encode()).hexdigest(),
+        guid=guid,
+        guid_hash=md5(guid.encode()).hexdigest(),
         last_modified=now(),
         pub_date=pub_date,
         rtl=False,
@@ -324,14 +337,13 @@ def rename(feed_id: int, new_title: str) -> None:
         db.refresh(feed)
 
 
-def clean_up_old_articles(feed_id: int, feed_articles) -> None:
+def clean_up_old_articles(feed_id: int, feed_guid_hashes: list[str]) -> None:
     """Clean up old articles from the database.
     This function deletes articles that are not included in the feed anymore, read, not starred,
     and have been last updated more than 90 days ago.
     :param feed_id: The ID of the feed to clean up articles for.
     :param feed_articles: The articles from the feed.
     """
-    feed_article_guids = {article["id"] for article in feed_articles}
     ninety_days_ago = int(time.time()) - 90 * 24 * 60 * 60
 
     with database.get_session() as db:
@@ -341,7 +353,7 @@ def clean_up_old_articles(feed_id: int, feed_articles) -> None:
             .filter(database.Article.last_modified < ninety_days_ago)
             .filter(database.Article.unread == False)  # noqa: E712
             .filter(database.Article.starred == False)  # noqa: E712
-            .filter(database.Article.guid.notin_(feed_article_guids))
+            .filter(database.Article.guid_hash.notin_(feed_guid_hashes))
             .all()
         )
 
