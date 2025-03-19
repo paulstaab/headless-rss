@@ -1,24 +1,20 @@
 import pytest
-from src import database, folder
-from src.feed import _create, update
+from src import article, feed, folder
 
 
-@pytest.fixture(params=["/atom.xml", "/github_releases.atom"])
+# when adding new examples, also add them to the feed_server in conftest.py
+@pytest.fixture(params=["/atom.xml", "/github_releases.atom", "/feed_without_ids.xml"])
 def feed_url(request, feed_server):
     return feed_server.url_for(request.param)
 
 
-def test_feed_parsing(feed_url):
+def test_feed_parsing(feed_url: str) -> None:
     # given
     root_folder_id = folder.get_root_folder_id()
     # when
-    with database.get_session() as db:
-        feed = _create(feed_url, folder_id=root_folder_id)
-        db.add(feed)
-        db.commit()
-        db.refresh(feed)
-        update(feed.id)
+    feed.add(feed_url, root_folder_id)
     # then
-    with database.get_session() as db:
-        articles = db.query(database.Article).filter(database.Article.feed_id == feed.id).all()
-    assert articles
+    new_feed = feed.get_all()[0]
+    assert new_feed.url == feed_url
+    articles = article.get_by_feed(new_feed.id)
+    assert len(articles) > 0

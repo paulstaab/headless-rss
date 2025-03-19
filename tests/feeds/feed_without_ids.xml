@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+    <title>Example Author</title>
+    <image>
+        <url>https://example.com/image.jpg</url>
+    </image>
+    <link>https://example.com/</link>
+    <updated>2025-03-17T00:00:00+00:00</updated>
+    <author>
+        <name>Example Author</name>
+    </author>
+    <description>Example description.</description>
+    <item>
+        <title>Example Post 1</title>
+        <link>https://example.com/writing/1.html</link>
+        <updated>2025-03-17T00:00:00+00:00</updated>
+        <pubDate>2025-03-17T00:00:00+00:00</pubDate>
+        <description>A first example post.</description>
+    </item>
+    <item>
+        <title>Example Post 2</title>
+        <link>https://example.com/writing/2.html</link>
+        <updated>2025-03-13T00:00:00+00:00</updated>
+        <pubDate>2025-03-13T00:00:00+00:00</pubDate>
+        <description>A second example post.</description>
+    </item>
+    <item>
+        <title>Example Post 3</title>
+        <link>https://example.com/writing/3.html</link>
+        <updated>2025-03-11T00:00:00+00:00</updated>
+        <pubDate>2025-03-11T00:00:00+00:00</pubDate>
+        <description>A third example post.</description>
+    </item>
+    <item>
+        <title>Example Post 4</title>
+        <link>https://example.com/writing/4.html</link>
+        <updated>2025-03-05T00:00:00+00:00</updated>
+        <pubDate>2025-03-05T00:00:00+00:00</pubDate>
+        <description>A fourth example post.</description>
+    </item>
+</channel>
+</rss>
