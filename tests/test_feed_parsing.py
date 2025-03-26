@@ -3,7 +3,7 @@ from src import article, feed, folder
 
 
 # when adding new examples, also add them to the feed_server in conftest.py
-@pytest.fixture(params=["/atom.xml", "/github_releases.atom", "/feed_without_ids.xml"])
+@pytest.fixture(params=["/atom.xml", "/github_releases.atom", "/feed_without_ids.xml", "/rss_2_0.xml", "/atom_1_0.xml"])
 def feed_url(request, feed_server):
     return feed_server.url_for(request.param)
 

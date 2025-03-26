@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+    <title>Example RSS 2.0 Feed</title>
+    <link>https://example.com/</link>
+    <description>This is an example RSS 2.0 feed</description>
+    <item>
+        <title>Example Item 1</title>
+        <link>https://example.com/item1</link>
+        <description>This is the first example item</description>
+        <pubDate>Mon, 01 Jan 2024 00:00:00 +0000</pubDate>
+    </item>
+    <item>
+        <title>Example Item 2</title>
+        <link>https://example.com/item2</link>
+        <description>This is the second example item</description>
+        <pubDate>Tue, 02 Jan 2024 00:00:00 +0000</pubDate>
+    </item>
+    <item>
+        <title>Example Item 3</title>
+        <link>https://example.com/item3</link>
+        <description>This is the third example item</description>
+        <pubDate>Wed, 03 Jan 2024 00:00:00 +0000</pubDate>
+    </item>
+</channel>
+</rss>
