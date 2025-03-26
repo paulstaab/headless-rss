@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom 1.0 Feed</title>
+  <link href="https://example.com/"/>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <author>
+    <name>Example Author</name>
+  </author>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
+  <entry>
+    <title>Example Entry 1</title>
+    <link href="https://example.com/entry1"/>
+    <summary>This is the first example entry</summary>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+  </entry>
+  <entry>
+    <title>Example Entry 2</title>
+    <link href="https://example.com/entry2"/>
+    <summary>This is the second example entry</summary>
+    <updated>2024-01-02T00:00:00Z</updated>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6b</id>
+  </entry>
+  <entry>
+    <title>Example Entry 3</title>
+    <link href="https://example.com/entry3"/>
+    <summary>This is the third example entry</summary>
+    <updated>2024-01-03T00:00:00Z</updated>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6c</id>
+  </entry>
+</feed>
