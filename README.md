@@ -38,6 +38,21 @@ The `USERNAME` and `PASSWORD` environment variables are optional to enable authe
 The `FEED_UPDATE_FREQUENCY_MIN` environment variable is optional to set the update frequency for feeds
 in minutes (default is 15 minutes).
 
+## CLI Command to Connect to Email Account
+
+A new CLI command `connect-email` has been added to connect to an email account and automatically detect newsletters by domain or mailing list id, adding them as feeds to the default folder while ignoring non-newsletter emails.
+
+### Usage
+
+```
+python src/cli.py connect-email --email-address <email_address> --password <password> --protocol <IMAP|POP3>
+```
+
+### Example
+
+```
+python src/cli.py connect-email --email-address example@gmail.com --password mypassword --protocol IMAP
+```
 
 ## Contribution Guidelines
 
