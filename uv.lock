@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.13"
 
 [[package]]
@@ -122,7 +123,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-utilities"
-version = "0.3.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click-spinner" },
@@ -131,9 +132,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f3/a3/f8d0e3c24b1eb1f0283009ad5341881bcd429b3477484b041dff3c6b4e26/fastapi_utilities-0.3.0.tar.gz", hash = "sha256:8b11061310b355eb9a9a65b93170611639fd8a6960658e7a1aff881fd7e6a157", size = 10377 }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/5f/ac62f88b881c3190ad49805a869e2b7d21ec9ac7bcf5287faeb513bca213/fastapi_utilities-0.3.1.tar.gz", hash = "sha256:2b52e4825f6cc3c546562f9b0b062d48a8b9867de97dd37795a2d2839003f43b", size = 10011 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/22/85c032dd5636dc3396e1cc77ddbd9aa1e947bc654315a8c4e1f97b8e6c02/fastapi_utilities-0.3.0-py3-none-any.whl", hash = "sha256:78dbcd54995900002370ee87e6b5de05ff69bce93e19d6a236f7810e5dc9c2f7", size = 15577 },
+    { url = "https://files.pythonhosted.org/packages/a2/10/5e705cad3a375a1c38be9ef4320f1ecbee82311896fb878bd8f4229e4a2b/fastapi_utilities-0.3.1-py3-none-any.whl", hash = "sha256:86a3ee7918930cb4010803b76d944e8656cf53076d2fd618440966f74fadc733", size = 15876 },
 ]
 
 [[package]]
@@ -216,13 +217,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.14.1" },
-    { name = "click", specifier = ">=8.1.8" },
-    { name = "fastapi", specifier = ">=0.115.7" },
+    { name = "alembic", specifier = "==1.15.1" },
+    { name = "click", specifier = "==8.1.8" },
+    { name = "fastapi", specifier = "==0.115.12" },
     { name = "fastapi-utilities", specifier = ">=0.3.0" },
-    { name = "feedparser", specifier = ">=6.0.11" },
-    { name = "sqlalchemy", specifier = ">=2.0.37" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
+    { name = "feedparser", specifier = "==6.0.11" },
+    { name = "sqlalchemy", specifier = "==2.0.39" },
+    { name = "uvicorn", specifier = "==0.34.0" },
 ]
 
 [package.metadata.requires-dev]
