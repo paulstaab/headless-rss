@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi_utilities import repeat_every  # type: ignore
 
-from src import database, feed
+from src import database, feed, email
 
 from .nextcloud_news.app import router as nextcloud_router
 
@@ -42,3 +42,4 @@ def status():
 async def update_feeds() -> None:
     """Update all feeds."""
     feed.update_all()
+    email.check_known_email_accounts()

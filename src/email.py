@@ -117,3 +117,27 @@ class EmailCredentials(database.Base):
     password = database.mapped_column(database.String, nullable=False)
     server = database.mapped_column(database.String, nullable=False)
     protocol = database.mapped_column(database.String, nullable=False)
+
+# Function to check known email accounts for new newsletters
+def check_known_email_accounts() -> None:
+    with database.get_session() as db:
+        email_accounts = db.query(EmailCredentials).all()
+        for account in email_accounts:
+            if account.protocol == "IMAP":
+                mail = connect_imap(account.email_address, account.password, account.server)
+            elif account.protocol == "POP3":
+                mail = connect_pop3(account.email_address, account.password, account.server)
+            check_for_new_emails(mail)
+
+# Function to parse and store newsletters in the database
+def parse_and_store_newsletters(newsletters: List[email.message.Message]) -> None:
+    for newsletter in newsletters:
+        feed_url = extract_feed_url(newsletter)
+        if feed_url:
+            existing_feed = get_feed_by_url(feed_url)
+            if existing_feed:
+                article.add_from_email(newsletter, existing_feed.id)
+            else:
+                default_folder_id = folder.get_root_folder_id()
+                new_feed = feed.add(feed_url, default_folder_id)
+                article.add_from_email(newsletter, new_feed.id)
