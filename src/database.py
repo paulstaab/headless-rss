@@ -82,3 +82,22 @@ class Folder(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
     is_root: Mapped[bool] = mapped_column(default=False)
+
+
+class EmailCredentials(Base):
+    __tablename__ = "email_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email_address: Mapped[str] = mapped_column(unique=True, nullable=False)
+    password: Mapped[str] = mapped_column(nullable=False)
+    server: Mapped[str] = mapped_column(nullable=False)
+    protocol: Mapped[str] = mapped_column(nullable=False)
+
+
+class Newsletter(Base):
+    __tablename__ = "newsletter"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email_id: Mapped[int] = mapped_column(ForeignKey("email_credentials.id"), nullable=False)
+    feed_id: Mapped[int] = mapped_column(ForeignKey("feed.id"), nullable=False)
+    last_checked: Mapped[int] = mapped_column(default=0)
