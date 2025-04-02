@@ -45,7 +45,7 @@ A new CLI command `connect-email` has been added to connect to an email account 
 ### Usage
 
 ```
-python src/cli.py connect-email --email-address <email_address> --password <password> --protocol <IMAP|POP3>
+python src/cli.py connect-email --email-address <email_address> --password <password> --protocol <IMAP|POP3> --server <server_address>
 ```
 
 ### Example
