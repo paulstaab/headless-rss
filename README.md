@@ -19,7 +19,8 @@ different protocols, multiple users or databases other than sqlite, please look 
 - [x] Can serve as a back-end for applications that speak the Nextcloud News protocol.
       Fiery Feeds is tested and works well.
 - [x] Can be hosted with a single unprivileged docker container.
-- [x] Low resource usage.
+- [x] Low resource usage (~1/4 efficiency core, 75 MB RAM).
+- [x] Updates feeds on a dynamic schedule based on their post frequency.
 
 ## Usage Instructions
 Start the API with:
