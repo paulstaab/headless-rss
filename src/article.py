@@ -40,7 +40,7 @@ def create(
         feed_id=feed_id,
         fingerprint=_create_fingerprint(content, title, url),
         guid=guid,
-        guid_hash=hash(guid),
+        guid_hash=_hash(guid),
         last_modified=now(),
         pub_date=pub_date or now(),
         rtl=False,
