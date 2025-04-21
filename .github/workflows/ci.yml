@@ -21,13 +21,13 @@ jobs:
         enable-cache: true
     - name: Lint with ruff
       run: |
-        uv run --extra dev ruff check src tests
+        uv run --dev ruff check src tests
     - name: Format with ruff
       run: |
-        uv run --extra dev ruff format src tests
+        uv run --dev ruff format src tests
     - name: Type check with mypy
       run: |
-        uv run --extra dev mypy src tests
+        uv run --dev mypy src tests
 
   test:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
         enable-cache: true
     - name: Run tests
       run: |
-        uv run --extra dev pytest tests
+        uv run --dev pytest tests
     - name: Run Alembic migrations
       run: |
         uv run --dev alembic upgrade head
