@@ -1,4 +1,4 @@
-"""Add email_credentials table and is_mailing_list column to feed
+"""Add email_credentials table
 
 Revision ID: f0a4c607411b
 Revises: 01f73e6bfaea
@@ -29,9 +29,7 @@ def upgrade() -> None:
         sa.Column("password", sa.String(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.add_column("feed", sa.Column("is_mailing_list", sa.Boolean(), nullable=False))
 
 
 def downgrade() -> None:
-    op.drop_column("feed", "is_mailing_list")
     op.drop_table("email_credentials")
