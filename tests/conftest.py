@@ -31,9 +31,7 @@ def feed_server(httpserver):
     httpserver.expect_request("/feed_without_ids.xml").respond_with_handler(
         lambda x: _respond_with_file(x, "feeds/feed_without_ids.xml")
     )
-    httpserver.expect_request("/rss_2_0.xml").respond_with_handler(
-        lambda x: _respond_with_file(x, "feeds/rss_2_0.xml")
-    )
+    httpserver.expect_request("/rss_2_0.xml").respond_with_handler(lambda x: _respond_with_file(x, "feeds/rss_2_0.xml"))
     httpserver.expect_request("/atom_1_0.xml").respond_with_handler(
         lambda x: _respond_with_file(x, "feeds/atom_1_0.xml")
     )
