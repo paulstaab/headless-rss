@@ -113,7 +113,7 @@ def update(feed_id: int, max_articles: int = 50) -> None:
                     n_new_articles += 1
 
             except Exception as e:
-                logger.error(f"Error adding new_article from feed {feed_id}: {e}")
+                logger.error(f"Error adding article from feed {feed_id}: {e}")
 
         logger.info(
             f"Feed {feed_id} ({feed.title}): Added {n_new_articles} new articles out of {len(parsed_feed.entries)}"
@@ -125,11 +125,11 @@ def update(feed_id: int, max_articles: int = 50) -> None:
 
 
 def _create_article(new_article, feed_id: int) -> database.Article:
-    """Create a new new_article in the database.
+    """Create a new article in the database.
 
-    :param new_article: The new_article data to create.
-    :param feed_id: The ID of the feed to associate with the new_article.
-    :returns: The created new_article.
+    :param new_article: The article data to create.
+    :param feed_id: The ID of the feed to associate with the article.
+    :returns: The created article.
     """
     content: str | None = (
         new_article.get("content")[0]["value"] if "content" in new_article else new_article.get("summary")
@@ -205,7 +205,7 @@ def _calculate_next_update_time(feed_id: int) -> int:
         )
 
     if avg_articles_per_day <= 0.1:
-        # Check daily if no new_article was published in the last week
+        # Check daily if no article was published in the last week
         # We add a bit of jitter to avoid all feeds being checked at the same time
         next_update_in = one_day + random.randint(-thirty_minutes, thirty_minutes)
     else:
