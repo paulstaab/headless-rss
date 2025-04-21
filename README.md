@@ -39,6 +39,25 @@ The `USERNAME` and `PASSWORD` environment variables are optional to enable authe
 The `FEED_UPDATE_FREQUENCY_MIN` environment variable is optional to set the update frequency for feeds
 in minutes (default is 15 minutes).
 
+## Email Newsletter Integration
+
+### Adding Email Credentials
+To add email credentials for fetching newsletters, use the following CLI command:
+
+```
+python -m src.cli add-email-credentials --protocol imap --server imap.example.com --port 993 --username user@example.com --password yourpassword
+```
+
+Replace the placeholders with your actual email server details.
+
+### Fetching Emails
+Emails from mailing lists will be automatically processed into feeds when the `update` command is executed:
+
+```
+python -m src.cli execute update
+```
+
+Ensure that the email credentials are added before running the update command.
 
 ## Contribution Guidelines
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sqlalchemy import Engine, ForeignKey, create_engine
+from sqlalchemy import Column, Engine, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 _engine: Engine | None = None
@@ -74,6 +74,7 @@ class Feed(Base):
     pinned: Mapped[bool] = mapped_column(default=False)
     update_error_count: Mapped[int] = mapped_column(default=0)
     last_update_error: Mapped[str | None] = mapped_column(default=None)
+    is_mailing_list: Mapped[bool] = mapped_column(default=False)
 
 
 class Folder(Base):
@@ -82,3 +83,14 @@ class Folder(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
     is_root: Mapped[bool] = mapped_column(default=False)
+
+
+class EmailCredential(Base):
+    __tablename__ = "email_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    protocol = Column(String, nullable=False)
+    server = Column(String, nullable=False)
+    port = Column(Integer, nullable=False)
+    username = Column(String, nullable=False)
+    password = Column(String, nullable=False)

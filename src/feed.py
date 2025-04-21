@@ -284,6 +284,34 @@ def add(url: str, folder_id: int) -> database.Feed:
     return new_feed
 
 
+def add_mailing_list(from_address: str, title: str, folder_id: int) -> database.Feed:
+    """Add a new mailing list feed."""
+    with database.get_session() as db:
+        existing_feed = db.query(database.Feed).filter(database.Feed.url == from_address).first()
+        if existing_feed:
+            raise FeedExistsError("Feed already exists")
+
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise NoFolderError(f"Folder with ID {folder_id} does not exist")
+
+    new_feed = database.Feed(
+        url=from_address,
+        title=title,
+        favicon_link=None,
+        link=None,
+        folder_id=folder_id,
+        added=now(),
+        is_mailing_list=True,
+    )
+    with database.get_session() as db:
+        db.add(new_feed)
+        db.commit()
+        db.refresh(new_feed)
+
+    return new_feed
+
+
 def delete(feed_id: int) -> None:
     """Delete a feed from the database.
 
