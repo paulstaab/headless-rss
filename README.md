@@ -39,6 +39,19 @@ The `USERNAME` and `PASSWORD` environment variables are optional to enable authe
 The `FEED_UPDATE_FREQUENCY_MIN` environment variable is optional to set the update frequency for feeds
 in minutes (default is 15 minutes).
 
+## Email Newsletter Integration
+
+`headless-rss` can connect to an existing email account via IMAP and display email
+newsletters send to this account as feeds.
+
+### Adding Email Credentials
+To add email credentials for fetching newsletters, use the following CLI command:
+
+```
+docker exec -ti add-email-credentials --server imap.example.com --port 993 --username user@example.com --password yourpassword
+```
+
+Replace the placeholders with your actual email server details.
 
 ## Contribution Guidelines
 

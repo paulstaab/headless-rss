@@ -1,12 +1,11 @@
 import logging
 import random
 import time
-from hashlib import md5
 from time import mktime
 
 import feedparser
 
-from src import database
+from src import article, database, email
 from src.folder import NoFolderError
 
 logger = logging.getLogger(__name__)
@@ -100,11 +99,11 @@ def update(feed_id: int, max_articles: int = 50) -> None:
         feed_article_guid_hashes = []
         n_new_articles = 0
 
-        for idx, article in enumerate(parsed_feed.entries):
+        for idx, new_article in enumerate(parsed_feed.entries):
             if idx >= max_articles:
                 break
             try:
-                db_article = _create_article(article, feed_id)
+                db_article = _create_article(new_article, feed_id)
                 feed_article_guid_hashes.append(db_article.guid_hash)
 
                 existing_article = db.query(database.Article).filter_by(guid_hash=db_article.guid_hash).first()
@@ -125,70 +124,44 @@ def update(feed_id: int, max_articles: int = 50) -> None:
     clean_up_old_articles(feed_id, feed_article_guid_hashes)
 
 
-def _create_article(article, feed_id: int) -> database.Article:
+def _create_article(new_article, feed_id: int) -> database.Article:
     """Create a new article in the database.
 
-    :param article: The article data to create.
+    :param new_article: The article data to create.
     :param feed_id: The ID of the feed to associate with the article.
     :returns: The created article.
     """
-    content: str | None = article.get("content")[0]["value"] if "content" in article else article.get("summary")
-    title: str | None = article.get("title")
-    url: str | None = article.get("link")
-    guid: str | None = article.get("id") or article.get("link") or article.get("title")
+    content: str | None = (
+        new_article.get("content")[0]["value"] if "content" in new_article else new_article.get("summary")
+    )
+    title: str | None = new_article.get("title")
+    url: str | None = new_article.get("link")
+    guid: str | None = new_article.get("id") or new_article.get("link") or new_article.get("title")
     if guid is None:
         raise ValueError("Article has no ID, link, or title. Failed to create an ID.")
 
     try:
-        updated_date = int(mktime(article["updated_parsed"]))
+        updated_date = int(mktime(new_article["updated_parsed"]))
     except (TypeError, ValueError):
         updated_date = now()
 
     try:
-        pub_date = int(mktime(article["published_parsed"]))
+        pub_date = int(mktime(new_article["published_parsed"]))
     except (TypeError, ValueError, KeyError):
         pub_date = updated_date
 
-    return database.Article(
-        title=title,
-        author=article.get("author"),
-        body=content,
-        content=content,
-        content_hash=_hash(content) if content else None,
-        enclosure_link=article.get("enclosure_link"),
-        enclosure_mime=article.get("enclosure_mime"),
+    return article.create(
         feed_id=feed_id,
-        fingerprint=_create_fingerprint(content, title, url),
+        title=title,
+        author=new_article.get("author"),
+        content=content,
+        enclosure_link=new_article.get("enclosure_link"),
+        enclosure_mime=new_article.get("enclosure_mime"),
         guid=guid,
-        guid_hash=md5(guid.encode()).hexdigest(),
-        last_modified=now(),
         pub_date=pub_date,
-        rtl=False,
-        starred=False,
-        unread=True,
         updated_date=updated_date,
         url=url,
     )
-
-
-def _hash(value: str) -> str:
-    """Generate an MD5 hash for the given value.
-
-    :param value: The value to hash.
-    :returns: The MD5 hash of the value.
-    """
-    return md5(value.encode()).hexdigest()
-
-
-def _create_fingerprint(content: str | None, title: str | None, url: str | None) -> str:
-    """Create a fingerprint for the given content, title, and URL.
-
-    :param content: The content of the article.
-    :param title: The title of the article.
-    :param url: The URL of the article.
-    :returns: The fingerprint of the article.
-    """
-    return _hash(_hash(content or "") + _hash(title or "") + _hash(url or ""))
 
 
 def update_all() -> None:
@@ -202,12 +175,16 @@ def update_all() -> None:
             .filter(
                 (database.Feed.next_update_time == None) | (database.Feed.next_update_time <= now())  # noqa: E711
             )
+            .filter(database.Feed.is_mailing_list == False)  # noqa: E712
             .all()
         )
     logger.info(f"Updating {len(feeds_to_update)} feeds")
 
     for feed in feeds_to_update:
         update(feed.id)
+
+    email.fetch_emails_from_all_mailboxes()
+    logger.info("Finished updating all feeds")
 
 
 def _calculate_next_update_time(feed_id: int) -> int:
@@ -255,6 +232,20 @@ def get_all() -> list[database.Feed]:
         return db.query(database.Feed).all()
 
 
+def get_by_url(url: str) -> database.Feed:
+    """Fetch a feed by its URL.
+
+    :param url: The URL of the feed to fetch.
+    :returns: The feed with the given URL, or None if not found.
+    raises NoFeedError: If the feed does not exist.
+    """
+    with database.get_session() as db:
+        feed = db.query(database.Feed).filter(database.Feed.url == url).first()
+    if not feed:
+        raise NoFeedError(f"Feed with URL {url} not found")
+    return feed
+
+
 def add(url: str, folder_id: int) -> database.Feed:
     """Add a new feed.
 
@@ -281,6 +272,34 @@ def add(url: str, folder_id: int) -> database.Feed:
         db.refresh(new_feed)
 
     update(new_feed.id, max_articles=10)
+    return new_feed
+
+
+def add_mailing_list(from_address: str, title: str, folder_id: int) -> database.Feed:
+    """Add a new mailing list feed."""
+    with database.get_session() as db:
+        existing_feed = db.query(database.Feed).filter(database.Feed.url == from_address).first()
+        if existing_feed:
+            raise FeedExistsError("Feed already exists")
+
+        folder = db.query(database.Folder).filter(database.Folder.id == folder_id).first()
+        if not folder:
+            raise NoFolderError(f"Folder with ID {folder_id} does not exist")
+
+    new_feed = database.Feed(
+        url=from_address,
+        title=title,
+        favicon_link=None,
+        link=None,
+        folder_id=folder_id,
+        added=now(),
+        is_mailing_list=True,
+    )
+    with database.get_session() as db:
+        db.add(new_feed)
+        db.commit()
+        db.refresh(new_feed)
+
     return new_feed
 
 
@@ -358,7 +377,7 @@ def clean_up_old_articles(feed_id: int, feed_guid_hashes: list[str]) -> None:
         )
 
         logger.info(f"Removing {len(articles_to_delete)} old articles from database")
-        for article in articles_to_delete:
-            db.delete(article)
+        for new_article in articles_to_delete:
+            db.delete(new_article)
 
         db.commit()
