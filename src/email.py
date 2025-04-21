@@ -3,7 +3,7 @@ import logging
 import poplib
 from email.parser import BytesParser
 
-from src import database, feed, folder
+from src import article, database, feed, folder
 from src.database import EmailCredential, get_session
 
 logger = logging.getLogger(__name__)
@@ -94,76 +94,108 @@ def fetch_emails() -> None:  # noqa: C901
 
 def process_email(raw_email) -> None:  # noqa: C901
     """Process a raw email message."""
-    try:
-        msg = BytesParser().parsebytes(raw_email)
-        subject = msg["subject"]
-        from_address = msg["from"]
-        logger.debug(f"Processing email: Subject='{subject}', From='{from_address}'")
+    msg = BytesParser().parsebytes(raw_email)
+    subject = msg["subject"]
+    from_address = _extract_sender_address(msg)
+    logger.debug(f"Processing email: Subject='{subject}', From='{from_address}'")
 
-        # Basic check if the email is from a mailing list (customize this logic)
-        # Look for headers like List-Id, List-Unsubscribe, or specific patterns in From/To
-        is_mailing_list = "List-Unsubscribe" in msg
+    if not _is_mailing_list(msg):
+        logger.info(f"Ignoring non-mailing list email: Subject='{subject}', From='{from_address}'")
+        return
 
-        if is_mailing_list:
-            # Use List-Id or a cleaned version of From as feed title
-            feed_title = from_address.split("@")[0]
-            logger.info(f"Identified mailing list email: Subject='{subject}', List='{feed_title}'")
+    feed_title = _extract_feed_title(msg)
+    logger.info(f"Identified mailing list email: Subject='{subject}', List='{feed_title}'")
 
-            with get_session() as session:
-                # Check if a feed exists for this mailing list
-                existing_feed = session.query(database.Feed).filter(database.Feed.url == from_address).first()
+    with get_session() as session:
+        # Check if a feed exists for this mailing list
+        existing_feed = session.query(database.Feed).filter(database.Feed.url == from_address).first()
 
-                if not existing_feed:
-                    logger.info(f"No existing feed found for '{from_address}'. Creating new feed.")
-                    # Assuming folder_id=1 is a default/root folder. Adjust as needed.
-                    # We might need a better way to determine the folder.
+        if not existing_feed:
+            logger.info(f"No existing feed found for '{from_address}'. Creating new feed.")
+            # Assuming folder_id=1 is a default/root folder. Adjust as needed.
+            # We might need a better way to determine the folder.
 
-                    new_feed = feed.add_mailing_list(
-                        from_address=from_address, title=feed_title, folder_id=folder.get_root_folder_id()
-                    )
-                    logger.info(f"Created new feed '{feed_title}' with ID {new_feed.id}")
-                    feed_id = new_feed.id
-                else:
-                    logger.debug(f"Found existing feed '{from_address}' with ID {existing_feed.id}")
-                    feed_id = existing_feed.id
-
-                # Extract content (this might need refinement based on email structure)
-                content = ""
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        content_type = part.get_content_type()
-                        content_disposition = str(part.get("Content-Disposition"))
-                        if content_type == "text/plain" and "attachment" not in content_disposition:
-                            content = part.get_payload(decode=True)  # type: ignore
-                            break  # Prefer plain text
-                    if not content:  # Fallback to HTML if no plain text
-                        for part in msg.walk():
-                            content_type = part.get_content_type()
-                            content_disposition = str(part.get("Content-Disposition"))
-                            if content_type == "text/html" and "attachment" not in content_disposition:
-                                content = part.get_payload(decode=True)  # type: ignore
-                                break
-                else:
-                    content = msg.get_payload(decode=True)  # type: ignore
-
-                # Ensure content is a string
-                if isinstance(content, bytes):
-                    # Attempt decoding with message charset or fallback to utf-8
-                    charset = msg.get_content_charset() or "utf-8"
-                    try:
-                        content = content.decode(charset, errors="replace")
-                    except (LookupError, UnicodeDecodeError):
-                        content = content.decode("utf-8", errors="replace")  # Fallback
-                elif not isinstance(content, str):
-                    content = str(content)  # Convert other types to string
-
-                # Add email as an article to the feed
-                # Need to adapt feed.add_article or create a similar function
-                # Placeholder for adding article logic
-                logger.info(f"Adding article '{subject}' to feed ID {feed_id}")
-                # feed.add_article(feed_id, title=subject, content=content, ...) # Needs implementation/adaptation
+            new_feed = feed.add_mailing_list(
+                from_address=from_address, title=feed_title, folder_id=folder.get_root_folder_id()
+            )
+            logger.info(f"Created new feed '{feed_title}' with ID {new_feed.id}")
+            feed_id = new_feed.id
         else:
-            logger.debug(f"Ignoring non-mailing list email: Subject='{subject}', From='{from_address}'")
+            logger.debug(f"Found existing feed '{from_address}' with ID {existing_feed.id}")
+            feed_id = existing_feed.id
 
-    except Exception as e:
-        logger.error(f"Error processing email: {e}", exc_info=True)
+        # Extract content (this might need refinement based on email structure)
+        content = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                content_disposition = str(part.get("Content-Disposition"))
+                if content_type == "text/plain" and "attachment" not in content_disposition:
+                    content = part.get_payload(decode=True)  # type: ignore
+                    break  # Prefer plain text
+            if not content:  # Fallback to HTML if no plain text
+                for part in msg.walk():
+                    content_type = part.get_content_type()
+                    content_disposition = str(part.get("Content-Disposition"))
+                    if content_type == "text/html" and "attachment" not in content_disposition:
+                        content = part.get_payload(decode=True)  # type: ignore
+                        break
+        else:
+            content = msg.get_payload(decode=True)  # type: ignore
+
+        # Ensure content is a string
+        if isinstance(content, bytes):
+            # Attempt decoding with message charset or fallback to utf-8
+            charset = msg.get_content_charset() or "utf-8"
+            try:
+                content = content.decode(charset, errors="replace")
+            except (LookupError, UnicodeDecodeError):
+                content = content.decode("utf-8", errors="replace")  # Fallback
+        elif not isinstance(content, str):
+            content = str(content)  # Convert other types to string
+
+        new_article = _create_article_from_email(
+            feed_id=feed_id,
+            subject=subject,
+            from_address=from_address,
+            content=content,
+        )
+        existing_article = session.query(database.Article).filter_by(guid_hash=new_article.guid_hash).first()
+        if not existing_article:
+            session.add(new_article)
+            session.commit()
+            logger.info(f"Added email '{subject}' to feed '{feed_title}'")
+
+
+def _extract_sender_address(msg) -> str:
+    from_address = msg["from"].split("<")[-1].strip(">").strip() if "<" in msg["from"] else msg["from"]
+    return from_address
+
+
+def _extract_feed_title(msg) -> str:
+    if "<" in msg["from"] and ">" in msg["from"]:
+        feed_title = msg["from"].split("<")[0].strip()
+    else:
+        feed_title = msg["from"].split("@")[1].split(".")[0]
+    return feed_title
+
+
+def _is_mailing_list(msg) -> bool:
+    """Check if the email is from a mailing list."""
+    return "List-Unsubscribe" in msg
+
+
+def _create_article_from_email(
+    feed_id: int,
+    subject: str,
+    from_address: str,
+    content: str,
+) -> database.Article:
+    """Create an article from email data."""
+    guid = from_address + ":" + subject
+
+    new_article = article.create(
+        feed_id=feed_id, title=subject, author=from_address, content=content, guid=guid, url=None
+    )
+
+    return new_article

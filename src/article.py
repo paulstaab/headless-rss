@@ -1,4 +1,5 @@
 import time
+from hashlib import md5
 
 from src import database
 from src.feed import NoFeedError
@@ -6,6 +7,69 @@ from src.feed import NoFeedError
 
 class NoArticleError(Exception):
     """Raised when an article is not found in the database."""
+
+
+def now() -> int:
+    """Get the current time in seconds since the epoch.
+
+    :returns: The current time in seconds since the epoch.
+    """
+    return int(time.time())
+
+
+def create(
+    feed_id: int,
+    title: str | None,
+    author: str | None,
+    url: str | None,
+    content: str | None,
+    guid: str,
+    pub_date: int | None = None,
+    updated_date: int | None = None,
+    enclosure_link: str | None = None,
+    enclosure_mime: str | None = None,
+) -> database.Article:
+    """Create a new article."""
+    return database.Article(
+        title=title,
+        author=author,
+        body=content,
+        content=content,
+        content_hash=_hash(content) if content else None,
+        enclosure_link=enclosure_link,
+        enclosure_mime=enclosure_mime,
+        feed_id=feed_id,
+        fingerprint=_create_fingerprint(content, title, url),
+        guid=guid,
+        guid_hash=hash(guid),
+        last_modified=now(),
+        pub_date=pub_date or now(),
+        rtl=False,
+        starred=False,
+        unread=True,
+        updated_date=updated_date or now(),
+        url=url,
+    )
+
+
+def _hash(value: str) -> str:
+    """Generate an MD5 hash for the given value.
+
+    :param value: The value to hash.
+    :returns: The MD5 hash of the value.
+    """
+    return md5(value.encode()).hexdigest()
+
+
+def _create_fingerprint(content: str | None, title: str | None, url: str | None) -> str:
+    """Create a fingerprint for the given content, title, and URL.
+
+    :param content: The content of the article.
+    :param title: The title of the article.
+    :param url: The URL of the article.
+    :returns: The fingerprint of the article.
+    """
+    return _hash(_hash(content or "") + _hash(title or "") + _hash(url or ""))
 
 
 def mark_read_by_feed(feed_id: int, newest_item_id: int) -> None:
