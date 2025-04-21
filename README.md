@@ -45,7 +45,7 @@ in minutes (default is 15 minutes).
 To add email credentials for fetching newsletters, use the following CLI command:
 
 ```
-python -m src.cli add-email-credentials --protocol imap --server imap.example.com --port 993 --username user@example.com --password yourpassword
+docker exec -ti add-email-credentials --protocol imap --server imap.example.com --port 993 --username user@example.com --password yourpassword
 ```
 
 Replace the placeholders with your actual email server details.

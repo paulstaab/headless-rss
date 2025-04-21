@@ -1,6 +1,7 @@
 import imaplib
 import logging
 import poplib
+from email.header import decode_header
 from email.parser import BytesParser
 
 from src import article, database, feed, folder
@@ -95,7 +96,7 @@ def fetch_emails() -> None:  # noqa: C901
 def process_email(raw_email) -> None:  # noqa: C901
     """Process a raw email message."""
     msg = BytesParser().parsebytes(raw_email)
-    subject = msg["subject"]
+    subject = _extract_email_subject(msg)
     from_address = _extract_sender_address(msg)
     logger.debug(f"Processing email: Subject='{subject}', From='{from_address}'")
 
@@ -130,14 +131,14 @@ def process_email(raw_email) -> None:  # noqa: C901
             for part in msg.walk():
                 content_type = part.get_content_type()
                 content_disposition = str(part.get("Content-Disposition"))
-                if content_type == "text/plain" and "attachment" not in content_disposition:
+                if content_type == "text/html" and "attachment" not in content_disposition:
                     content = part.get_payload(decode=True)  # type: ignore
-                    break  # Prefer plain text
-            if not content:  # Fallback to HTML if no plain text
+                    break  # Prefer html text
+            if not content:  # Fallback to plain
                 for part in msg.walk():
                     content_type = part.get_content_type()
                     content_disposition = str(part.get("Content-Disposition"))
-                    if content_type == "text/html" and "attachment" not in content_disposition:
+                    if content_type == "text/plain" and "attachment" not in content_disposition:
                         content = part.get_payload(decode=True)  # type: ignore
                         break
         else:
@@ -178,6 +179,18 @@ def _extract_feed_title(msg) -> str:
     else:
         feed_title = msg["from"].split("@")[1].split(".")[0]
     return feed_title
+
+
+def _extract_email_subject(msg) -> str:
+    raw_subject = msg["subject"]
+    decoded_subject_parts = decode_header(raw_subject)
+    subject = ""
+    for part, encoding in decoded_subject_parts:
+        if isinstance(part, bytes):
+            subject += part.decode(encoding or "utf-8", errors="replace")
+        else:
+            subject += part
+    return subject
 
 
 def _is_mailing_list(msg) -> bool:

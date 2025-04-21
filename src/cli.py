@@ -13,15 +13,13 @@ def cli():
 
 
 @cli.command()
-@click.argument("command", required=True)
-def execute(command):
+def update() -> None:
     """Execute the specified command.
 
     :param command: The command to execute. Supported commands: 'update'.
     """
     database.init(Path("data/headless-rss.sqlite3"))
-    if command == "update":
-        feed.update_all()
+    feed.update_all()
 
 
 @cli.command()
@@ -35,8 +33,9 @@ def execute(command):
 @click.option("--port", required=True, type=int, help="Port number for the email server.")
 @click.option("--username", required=True, help="Email username.")
 @click.option("--password", required=True, help="Email password.")
-def add_email_credentials(protocol, server, port, username, password):
+def add_email_credentials(protocol, server, port, username, password) -> None:
     """Add email credentials for fetching newsletters."""
+    database.init(Path("data/headless-rss.sqlite3"))
     email.add_credentials(protocol, server, port, username, password)
     click.echo("Email credentials added successfully.")
 

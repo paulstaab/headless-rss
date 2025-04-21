@@ -2,7 +2,6 @@ import time
 from hashlib import md5
 
 from src import database
-from src.feed import NoFeedError
 
 
 class NoArticleError(Exception):
@@ -77,6 +76,8 @@ def mark_read_by_feed(feed_id: int, newest_item_id: int) -> None:
     with database.get_session() as db:
         feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
         if not feed:
+            from src.feed import NoFeedError
+
             raise NoFeedError(f"No feed with ID {feed_id} exists")
 
         items = (
