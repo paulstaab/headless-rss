@@ -5,7 +5,7 @@ A minimal-viable feed aggregator made for self-hosting.
 `headless-rss` is an rss feed aggregator with a minimal feature set.
 It is intended to be used in a homelab setting with a single user. It provides
 a [Nextcloud News compatible API](https://github.com/nextcloud/news/blob/master/docs/api/api-v1-3.md),
-and can serve as a back-end for compatible apps such as [NextNews](https://nextnewsapp.com) and
+and can serve as a back-end for compatible apps. It is tested with
 [Fiery Feeds](https://voidstern.net/fiery-feeds).
 
 If you are looking for a feature-complete feed aggregator back-end that supports e.g.
@@ -19,7 +19,7 @@ different protocols, multiple users or databases other than sqlite, please look 
 - [x] Can serve as a back-end for applications that speak the Nextcloud News protocol.
       Fiery Feeds is tested and works well.
 - [x] Can be hosted with a single unprivileged docker container.
-
+- [x] Low resource usage.
 
 ## Usage Instructions
 Start the API with:
