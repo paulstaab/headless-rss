@@ -19,7 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("feed", sa.Column("is_mailing_list", sa.Boolean(), nullable=False))
+    op.add_column("feed", sa.Column("is_mailing_list", sa.Boolean(), nullable=False, server_default=sa.false()))
 
 
 def downgrade() -> None:
