@@ -1,6 +1,5 @@
 import imaplib
 import logging
-import poplib
 from email.header import decode_header
 from email.parser import BytesParser
 
@@ -10,87 +9,69 @@ from src.database import EmailCredential, get_session
 logger = logging.getLogger(__name__)
 
 
+class EmailConnectionError(Exception):
+    """Raised when there is an error connecting to the email server."""
+
+
 def add_credentials(protocol, server, port, username, password):
     """Store email credentials in the database."""
-    logger.info(f"Adding email credentials for user {username} on server {server}")
     with get_session() as session:
         credential = EmailCredential(protocol=protocol, server=server, port=port, username=username, password=password)
+        # test that the credentials work
+        try:
+            _ = _connect_to_mailbox(credential)
+        except imaplib.IMAP4.error as e:
+            raise EmailConnectionError(
+                f"Failed to connect to mailbox at {server}:{port} for user {username}: {e}"
+            ) from e
         session.add(credential)
         session.commit()
-    logger.info(f"Successfully added email credentials for user {username}")
 
 
-def fetch_emails() -> None:  # noqa: C901
+def fetch_emails_from_all_mailboxes() -> None:
+    with get_session() as session:
+        credentials = session.query(EmailCredential).all()
+    if not credentials:
+        logger.info("No email credentials configured. Skipping email fetch.")
+        return
+    for credential in credentials:
+        fetch_emails(credential)
+
+
+def fetch_emails(credential: database.EmailCredential) -> None:  # noqa: C901
     """Fetch emails from all configured mailboxes."""
-    try:
-        with get_session() as session:
-            credentials = session.query(EmailCredential).all()
-            if not credentials:
-                logger.info("No email credentials configured. Skipping email fetch.")
-                return
+    if str(credential.protocol) != "imap":
+        raise NotImplementedError(f"Protocol '{credential.protocol}' not supported. Only 'imap' is implemented.")
 
-            for credential in credentials:
-                logger.info(
-                    f"Fetching emails for {credential.username} "
-                    f"via {credential.protocol.upper()} from {credential.server}:{credential.port}"
-                )
-                try:
-                    if credential.protocol.lower() == "imap":
-                        mail = imaplib.IMAP4_SSL(credential.server, credential.port)  # type: ignore
-                        mail.login(credential.username, credential.password)  # type: ignore
-                        mail.select("inbox")
-                        logger.debug("IMAP: Logged in and selected inbox.")
-                        status, messages = mail.search(None, "ALL")
-                        if status != "OK":
-                            logger.error(f"IMAP: Failed search for {credential.username}. Status: {status}")
-                            continue
-                        email_ids = messages[0].split()
-                        logger.info(f"IMAP: Found {len(email_ids)} emails for {credential.username}.")
-                        for num in email_ids:
-                            fetch_status, data = mail.fetch(num, "(RFC822)")
-                            if fetch_status == "OK" and data and data[0] is not None:
-                                raw_email = data[0][1]
-                                process_email(raw_email)
-                            else:
-                                logger.warning(
-                                    f"IMAP: Failed fetch email ID {num.decode()} for "
-                                    f"{credential.username}. Status: {fetch_status}"
-                                )
-                        mail.logout()
-                        logger.debug(f"IMAP: Logged out for {credential.username}.")
+    logger.info(f"Fetching emails for {credential.username} from {credential.server}:{credential.port}")
 
-                    elif credential.protocol.lower() == "pop3":
-                        mail_pop = poplib.POP3_SSL(credential.server, credential.port)  # type: ignore
-                        mail_pop.user(credential.username)  # type: ignore
-                        mail_pop.pass_(credential.password)  # type: ignore
-                        logger.debug("POP3: Logged in.")
-                        num_messages = len(mail_pop.list()[1])
-                        logger.info(f"POP3: Found {num_messages} emails for {credential.username}.")
-                        for i in range(num_messages):
-                            try:
-                                response, lines, octets = mail_pop.retr(i + 1)
-                                if response.startswith(b"+OK"):
-                                    raw_email = b"\n".join(lines)
-                                    process_email(raw_email)
-                                else:
-                                    logger.warning(
-                                        f"POP3: Failed retrieve email index {i + 1} for "
-                                        f"{credential.username}. Response: {response.decode()}"
-                                    )
-                            except Exception as e:
-                                logger.error(
-                                    f"POP3: Error processing email index {i + 1} for {credential.username}: {e}"
-                                )
-                        mail_pop.quit()
-                        logger.debug(f"POP3: Connection closed for {credential.username}.")
-                except Exception as e:
-                    logger.error(
-                        f"Error fetching emails for {credential.username} from {credential.server}: {e}", exc_info=True
-                    )
+    mail = _connect_to_mailbox(credential)
+    logger.debug("IMAP: Logged in and selected inbox.")
+    status, messages = mail.search(None, "UNSEEN")
+    if status != "OK":
+        logger.error(f"IMAP: Failed search for {credential.username}. Status: {status}")
+        return
+    email_ids = messages[0].split()
+    logger.info(f"IMAP: Found {len(email_ids)} emails for {credential.username}.")
+    for num in email_ids:
+        fetch_status, data = mail.fetch(num, "(RFC822)")
+        if fetch_status == "OK" and data and data[0] is not None:
+            raw_email = data[0][1]
+            process_email(raw_email)
+            mail.store(num, "+FLAGS", "\\Seen")
+        else:
+            logger.warning(
+                f"IMAP: Failed fetch email ID {num.decode()} for {credential.username}. Status: {fetch_status}"
+            )
+    mail.logout()
+    logger.debug(f"IMAP: Logged out for {credential.username}.")
 
-    except Exception as e:
-        logger.error(f"General error during email fetching process: {e}", exc_info=True)
-    logger.info("Finished email fetch process.")
+
+def _connect_to_mailbox(credential):
+    mail = imaplib.IMAP4_SSL(credential.server, credential.port)  # type: ignore
+    mail.login(credential.username, credential.password)  # type: ignore
+    mail.select("inbox")
+    return mail
 
 
 def process_email(raw_email) -> None:  # noqa: C901

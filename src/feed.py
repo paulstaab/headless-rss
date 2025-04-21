@@ -183,7 +183,7 @@ def update_all() -> None:
     for feed in feeds_to_update:
         update(feed.id)
 
-    email.fetch_emails()
+    email.fetch_emails_from_all_mailboxes()
     logger.info("Finished updating all feeds")
 
 

@@ -23,23 +23,20 @@ def update() -> None:
 
 
 @cli.command()
-@click.option(
-    "--protocol",
-    type=click.Choice(["imap", "pop3"], case_sensitive=False),
-    required=True,
-    help="Protocol to use (IMAP or POP3).",
-)
 @click.option("--server", required=True, help="Email server address.")
 @click.option("--port", required=True, type=int, help="Port number for the email server.")
 @click.option("--username", required=True, help="Email username.")
 @click.option("--password", required=True, help="Email password.")
-def add_email_credentials(protocol, server, port, username, password) -> None:
+def add_email_credentials(server, port, username, password) -> None:
     """Add email credentials for fetching newsletters."""
     database.init(Path("data/headless-rss.sqlite3"))
-    email.add_credentials(protocol, server, port, username, password)
+    try:
+        email.add_credentials(protocol="imap", server=server, port=port, username=username, password=password)
+    except Exception as e:
+        raise click.ClickException(f"Failed to add email credentials: {e}") from None
     click.echo("Email credentials added successfully.")
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
     cli()

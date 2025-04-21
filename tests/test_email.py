@@ -1,5 +1,5 @@
 from src import article, feed
-from src.email import add_credentials, fetch_emails
+from src.email import add_credentials
 
 
 def _mock_emails(mocker) -> None:
@@ -40,13 +40,14 @@ def _mock_emails(mocker) -> None:
 def test_fetch_emails(mocker):
     """Test fetching emails from the configured mailbox."""
     # given
+    _mock_emails(mocker)
     add_credentials(
         protocol="imap", server="imap.example.com", port=993, username="user@example.com", password="password123"
     )
 
     # when
     _mock_emails(mocker)
-    fetch_emails()
+    feed.update_all()
 
     _mock_emails(mocker)
     feed.update_all()
