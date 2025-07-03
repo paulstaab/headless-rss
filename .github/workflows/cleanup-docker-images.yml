@@ -25,58 +25,73 @@ jobs:
           
           # First, let's check what packages exist to debug the issue
           echo "Checking available packages for debugging..."
-          PACKAGES_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          
+          # Try both user and organization endpoints
+          echo "Trying user packages endpoint..."
+          USER_PACKAGES_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/users/$OWNER/packages?package_type=container")
-          echo "Available container packages:"
-          echo "$PACKAGES_RESPONSE" | jq -r '.[].name' 2>/dev/null || echo "Failed to parse packages response"
+          echo "User container packages:"
+          echo "$USER_PACKAGES_RESPONSE" | jq -r '.[].name' 2>/dev/null || echo "No user packages found or failed to parse"
           
-          # Try different package name possibilities
+          echo "Trying organization packages endpoint..."
+          ORG_PACKAGES_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/orgs/$OWNER/packages?package_type=container")
+          echo "Organization container packages:"
+          echo "$ORG_PACKAGES_RESPONSE" | jq -r '.[].name' 2>/dev/null || echo "No org packages found or failed to parse"
+          
+          # Try different package name possibilities and API endpoints
           PACKAGE_NAMES=("headless-rss" "$REPO" "$OWNER/$REPO")
+          API_ENDPOINTS=("users" "orgs")
           VERSIONS=""
           SUCCESSFUL_PACKAGE_NAME=""
+          SUCCESSFUL_ENDPOINT=""
           
-          for PACKAGE_NAME in "${PACKAGE_NAMES[@]}"; do
-            echo "Trying package name: $PACKAGE_NAME"
-            
-            # Try the API call and capture both response and HTTP status
-            API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/users/$OWNER/packages/container/$PACKAGE_NAME/versions")
-            
-            # Extract HTTP status and response body
-            HTTP_STATUS=$(echo "$API_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
-            RESPONSE_BODY=$(echo "$API_RESPONSE" | sed '/HTTP_STATUS:/d')
-            
-            echo "API call status for $PACKAGE_NAME: $HTTP_STATUS"
-            
-            if [ "$HTTP_STATUS" = "200" ]; then
-              echo "Successfully found package: $PACKAGE_NAME"
-              SUCCESSFUL_PACKAGE_NAME="$PACKAGE_NAME"
+          for ENDPOINT in "${API_ENDPOINTS[@]}"; do
+            for PACKAGE_NAME in "${PACKAGE_NAMES[@]}"; do
+              echo "Trying package name: $PACKAGE_NAME on endpoint: $ENDPOINT"
               
-              # Parse versions from successful response
-              VERSIONS=$(echo "$RESPONSE_BODY" | jq -r '.[] | select(.metadata.container.tags | length == 0) | select(.created_at < "'$CUTOFF_DATE'") | .id' 2>/dev/null)
+              # Try the API call and capture both response and HTTP status
+              API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/$ENDPOINT/$OWNER/packages/container/$PACKAGE_NAME/versions")
               
-              # Show debug information
-              TOTAL_VERSIONS=$(echo "$RESPONSE_BODY" | jq '. | length' 2>/dev/null || echo "0")
-              UNTAGGED_VERSIONS=$(echo "$RESPONSE_BODY" | jq '[.[] | select(.metadata.container.tags | length == 0)] | length' 2>/dev/null || echo "0")
-              OLD_UNTAGGED=$(echo "$RESPONSE_BODY" | jq '[.[] | select(.metadata.container.tags | length == 0) | select(.created_at < "'$CUTOFF_DATE'")] | length' 2>/dev/null || echo "0")
+              # Extract HTTP status and response body
+              HTTP_STATUS=$(echo "$API_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+              RESPONSE_BODY=$(echo "$API_RESPONSE" | sed '/HTTP_STATUS:/d')
               
-              echo "Total versions found: $TOTAL_VERSIONS"
-              echo "Untagged versions: $UNTAGGED_VERSIONS"
-              echo "Old untagged versions: $OLD_UNTAGGED"
+              echo "API call status for $PACKAGE_NAME on $ENDPOINT: $HTTP_STATUS"
               
-              break
-            elif [ "$HTTP_STATUS" = "404" ]; then
-              echo "Package $PACKAGE_NAME not found (404)"
-            else
-              echo "API call failed for $PACKAGE_NAME with status $HTTP_STATUS"
-              echo "Response: $RESPONSE_BODY"
-            fi
+              if [ "$HTTP_STATUS" = "200" ]; then
+                echo "Successfully found package: $PACKAGE_NAME on endpoint: $ENDPOINT"
+                SUCCESSFUL_PACKAGE_NAME="$PACKAGE_NAME"
+                SUCCESSFUL_ENDPOINT="$ENDPOINT"
+                
+                # Parse versions from successful response
+                VERSIONS=$(echo "$RESPONSE_BODY" | jq -r '.[] | select(.metadata.container.tags | length == 0) | select(.created_at < "'$CUTOFF_DATE'") | .id' 2>/dev/null)
+                
+                # Show debug information
+                TOTAL_VERSIONS=$(echo "$RESPONSE_BODY" | jq '. | length' 2>/dev/null || echo "0")
+                UNTAGGED_VERSIONS=$(echo "$RESPONSE_BODY" | jq '[.[] | select(.metadata.container.tags | length == 0)] | length' 2>/dev/null || echo "0")
+                OLD_UNTAGGED=$(echo "$RESPONSE_BODY" | jq '[.[] | select(.metadata.container.tags | length == 0) | select(.created_at < "'$CUTOFF_DATE'")] | length' 2>/dev/null || echo "0")
+                
+                echo "Total versions found: $TOTAL_VERSIONS"
+                echo "Untagged versions: $UNTAGGED_VERSIONS"
+                echo "Old untagged versions: $OLD_UNTAGGED"
+                
+                break 2  # Break out of both loops
+              elif [ "$HTTP_STATUS" = "404" ]; then
+                echo "Package $PACKAGE_NAME not found on $ENDPOINT (404)"
+              else
+                echo "API call failed for $PACKAGE_NAME on $ENDPOINT with status $HTTP_STATUS"
+                echo "Response: $RESPONSE_BODY"
+              fi
+            done
           done
           
           # Safety check - don't proceed if we got an empty response or error
-          if [ -z "$VERSIONS" ] || [ -z "$SUCCESSFUL_PACKAGE_NAME" ]; then
+          if [ -z "$VERSIONS" ] || [ -z "$SUCCESSFUL_PACKAGE_NAME" ] || [ -z "$SUCCESSFUL_ENDPOINT" ]; then
             echo "No old untagged versions found to delete."
             exit 0
           fi
@@ -95,11 +110,11 @@ jobs:
           
           # Delete each old untagged version
           for VERSION_ID in $VERSIONS; do
-            echo "Deleting version ID: $VERSION_ID from package: $SUCCESSFUL_PACKAGE_NAME"
+            echo "Deleting version ID: $VERSION_ID from package: $SUCCESSFUL_PACKAGE_NAME (endpoint: $SUCCESSFUL_ENDPOINT)"
             DELETE_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X DELETE \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/users/$OWNER/packages/container/$SUCCESSFUL_PACKAGE_NAME/versions/$VERSION_ID")
+              "https://api.github.com/$SUCCESSFUL_ENDPOINT/$OWNER/packages/container/$SUCCESSFUL_PACKAGE_NAME/versions/$VERSION_ID")
             
             DELETE_HTTP_STATUS=$(echo "$DELETE_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
             DELETE_RESPONSE_BODY=$(echo "$DELETE_RESPONSE" | sed '/HTTP_STATUS:/d')
