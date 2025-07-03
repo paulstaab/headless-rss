@@ -1,0 +1,66 @@
+name: Cleanup Docker Images
+
+on:
+  schedule:
+    # Run weekly on Sundays at 02:00 UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Cleanup old container images
+        run: |
+          # Get package versions
+          PACKAGE_NAME="headless-rss"
+          OWNER="${{ github.repository_owner }}"
+          
+          # Calculate 30 days ago timestamp
+          CUTOFF_DATE=$(date -d '30 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "Deleting untagged container images older than: $CUTOFF_DATE"
+          
+          # Get all package versions
+          VERSIONS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/users/$OWNER/packages/container/$PACKAGE_NAME/versions" \
+            | jq -r '.[] | select(.metadata.container.tags | length == 0) | select(.created_at < "'$CUTOFF_DATE'") | .id')
+          
+          # Safety check - don't proceed if we got an empty response or error
+          if [ -z "$VERSIONS" ]; then
+            echo "No old untagged versions found to delete."
+            exit 0
+          fi
+          
+          # Count versions to delete
+          VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
+          echo "Found $VERSION_COUNT untagged versions to delete:"
+          echo "$VERSIONS"
+          
+          # Safety check - don't delete more than 50 versions at once
+          if [ "$VERSION_COUNT" -gt 50 ]; then
+            echo "ERROR: Too many versions to delete ($VERSION_COUNT). This might indicate an issue."
+            echo "Skipping deletion for safety. Please check manually."
+            exit 1
+          fi
+          
+          # Delete each old untagged version
+          for VERSION_ID in $VERSIONS; do
+            echo "Deleting version ID: $VERSION_ID"
+            RESPONSE=$(curl -s -w "%{http_code}" -X DELETE \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/users/$OWNER/packages/container/$PACKAGE_NAME/versions/$VERSION_ID")
+            
+            HTTP_CODE="${RESPONSE: -3}"
+            if [ "$HTTP_CODE" = "204" ]; then
+              echo "Successfully deleted version $VERSION_ID"
+            else
+              echo "Failed to delete version $VERSION_ID (HTTP $HTTP_CODE)"
+            fi
+          done
+          
+          echo "Cleanup completed successfully"
