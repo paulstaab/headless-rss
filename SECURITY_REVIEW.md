@@ -180,4 +180,4 @@ While headless-rss provides useful functionality, several security issues need a
 
 ---
 
-*This review was conducted on the codebase as of commit [latest]. Security is an ongoing process, and regular reviews should be conducted as the codebase evolves.*
+*This review was conducted on the codebase as of commit 175baef5df09eb38b8863e9c65ca84a4cab85b8d. Security is an ongoing process, and regular reviews should be conducted as the codebase evolves.*
