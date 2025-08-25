@@ -34,6 +34,58 @@ class SSRFProtectionError(Exception):
     """Raised when a URL is blocked due to SSRF protection."""
 
 
+def _is_testing_mode() -> bool:
+    """Detect if we're running in testing mode."""
+    import sys
+
+    return "pytest" in sys.modules or any("test" in module for module in sys.modules)
+
+
+def _validate_url_scheme(parsed_url) -> None:
+    """Validate that the URL uses an allowed scheme."""
+    if parsed_url.scheme not in ("http", "https"):
+        raise SSRFProtectionError(
+            f"URL scheme '{parsed_url.scheme}' is not allowed. Only http and https are permitted."
+        )
+
+
+def _validate_hostname(hostname: str | None, allow_localhost: bool) -> None:
+    """Validate that the hostname is not blocked."""
+    if not hostname:
+        raise SSRFProtectionError("URL must have a valid hostname.")
+
+    # Block localhost variants (unless explicitly allowed)
+    if not allow_localhost and hostname.lower() in ("localhost", "127.0.0.1", "::1"):
+        raise SSRFProtectionError("Access to localhost is not allowed.")
+
+
+def _validate_ip_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, ip_str: str, allow_localhost: bool) -> None:
+    """Validate that an IP address is not in blocked ranges."""
+    # Block loopback addresses (unless explicitly allowed)
+    if not allow_localhost and ip.is_loopback:
+        raise SSRFProtectionError(f"Access to loopback address {ip} is not allowed.")
+
+    # Block private addresses (RFC 1918) - but skip if already handled as loopback
+    if ip.is_private and not ip.is_loopback:
+        raise SSRFProtectionError(f"Access to private address {ip} is not allowed.")
+
+    # Block link-local addresses
+    if ip.is_link_local:
+        raise SSRFProtectionError(f"Access to link-local address {ip} is not allowed.")
+
+    # Block unspecified addresses (0.0.0.0, ::)
+    if ip.is_unspecified:
+        raise SSRFProtectionError(f"Access to unspecified address {ip} is not allowed.")
+
+    # Block multicast addresses
+    if ip.is_multicast:
+        raise SSRFProtectionError(f"Access to multicast address {ip} is not allowed.")
+
+    # Additional check for cloud metadata service (AWS, GCP, Azure common endpoint)
+    if ip_str == "169.254.169.254":
+        raise SSRFProtectionError("Access to cloud metadata service is not allowed.")
+
+
 def _validate_feed_url(url: str, allow_localhost: bool | None = None) -> None:
     """Validate that a feed URL is safe to access (SSRF protection).
 
@@ -48,61 +100,28 @@ def _validate_feed_url(url: str, allow_localhost: bool | None = None) -> None:
     :param allow_localhost: If True, allows localhost/loopback addresses. If None, auto-detects testing mode.
     :raises SSRFProtectionError: If the URL is blocked for security reasons.
     """
-    import sys
-
     # Auto-detect testing mode if not explicitly specified
     if allow_localhost is None:
-        allow_localhost = "pytest" in sys.modules or any("test" in module for module in sys.modules)
+        allow_localhost = _is_testing_mode()
 
     parsed_url = urlparse(url)
-
-    # Only allow HTTP and HTTPS schemes
-    if parsed_url.scheme not in ("http", "https"):
-        raise SSRFProtectionError(
-            f"URL scheme '{parsed_url.scheme}' is not allowed. Only http and https are permitted."
-        )
+    _validate_url_scheme(parsed_url)
 
     hostname = parsed_url.hostname
-    if not hostname:
-        raise SSRFProtectionError("URL must have a valid hostname.")
+    _validate_hostname(hostname, allow_localhost)
 
-    # Block localhost variants (unless explicitly allowed)
-    if not allow_localhost and hostname.lower() in ("localhost", "127.0.0.1", "::1"):
-        raise SSRFProtectionError("Access to localhost is not allowed.")
+    # Now we know hostname is not None due to validation
+    assert hostname is not None
 
     # Try to resolve hostname to IP and check if it's in blocked ranges
     try:
         # Get all IP addresses for this hostname
         addr_info = socket.getaddrinfo(hostname, None)
         for _family, _type, _proto, _canonname, sockaddr in addr_info:
-            ip_str = sockaddr[0]
+            ip_str = str(sockaddr[0])  # Ensure it's a string
             try:
                 ip = ipaddress.ip_address(ip_str)
-
-                # Block loopback addresses (unless explicitly allowed)
-                if not allow_localhost and ip.is_loopback:
-                    raise SSRFProtectionError(f"Access to loopback address {ip} is not allowed.")
-
-                # Block private addresses (RFC 1918) - but skip if already handled as loopback
-                if ip.is_private and not ip.is_loopback:
-                    raise SSRFProtectionError(f"Access to private address {ip} is not allowed.")
-
-                # Block link-local addresses
-                if ip.is_link_local:
-                    raise SSRFProtectionError(f"Access to link-local address {ip} is not allowed.")
-
-                # Block unspecified addresses (0.0.0.0, ::)
-                if ip.is_unspecified:
-                    raise SSRFProtectionError(f"Access to unspecified address {ip} is not allowed.")
-
-                # Block multicast addresses
-                if ip.is_multicast:
-                    raise SSRFProtectionError(f"Access to multicast address {ip} is not allowed.")
-
-                # Additional check for cloud metadata service (AWS, GCP, Azure common endpoint)
-                if ip_str == "169.254.169.254":
-                    raise SSRFProtectionError("Access to cloud metadata service is not allowed.")
-
+                _validate_ip_address(ip, ip_str, allow_localhost)
             except ValueError:
                 # If it's not a valid IP address, continue (could be IPv6 or malformed)
                 continue
