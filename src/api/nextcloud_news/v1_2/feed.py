@@ -94,6 +94,8 @@ def add_feed(input: FeedPostIn):
         raise HTTPException(status_code=422, detail=str(e)) from e
     except feed.FeedParsingError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    except feed.SSRFProtectionError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return {"feeds": get_feeds().feeds, "newestItemId": new_feed.id}
 
