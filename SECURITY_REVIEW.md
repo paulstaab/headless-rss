@@ -8,64 +8,15 @@
 
 This security review identified several high and medium priority security vulnerabilities in the headless-rss application. The most critical issues relate to:
 
-1. **Plaintext credential storage** - Email credentials stored unencrypted in SQLite database
-2. **Weak authentication mechanisms** - Basic Auth over HTTP, credentials in environment variables
-3. **Insufficient input validation** - URLs and email content not properly validated/sanitized
-4. **Information disclosure** - Sensitive data exposure in logs and error messages
-5. **Container security** - Missing security hardening in Docker configuration
+1. **Insufficient input validation** - URLs and email content not properly validated/sanitized
+2. **Information disclosure** - Sensitive data exposure in logs and error messages
+3. **Container security** - Missing security hardening in Docker configuration
 
 ## Critical Security Issues
 
 ### 🔴 **HIGH SEVERITY**
 
-#### 1. Plaintext Email Credential Storage
-**File:** `src/database.py:88-95`, `src/email.py:16-28`  
-**Risk:** Credential compromise  
-
-Email passwords are stored in plaintext in the SQLite database:
-
-```python
-class EmailCredential(Base):
-    __tablename__ = "email_credentials"
-    username = Column(String, nullable=False)
-    password = Column(String, nullable=False)  # ⚠️ PLAINTEXT PASSWORD
-```
-
-**Impact:** If the database file is compromised, all email credentials are immediately exposed.
-
-**Recommendation:** 
-- Encrypt passwords using a key derivation function (PBKDF2, bcrypt, scrypt)
-- Store only password hashes, not plaintext passwords
-- Consider using application-level encryption for the entire credentials table
-
-#### 2. Weak Authentication Implementation
-**File:** `src/api/nextcloud_news/v1_3/app.py:16-40`, `src/api/nextcloud_news/v1_2/app.py:16-40`  
-**Risk:** Authentication bypass, credential exposure
-
-Multiple authentication weaknesses:
-
-```python
-def get_current_username(credentials):
-    username = os.getenv("USERNAME")  # ⚠️ Environment variable exposure
-    password = os.getenv("PASSWORD")  # ⚠️ Plaintext in env
-    if username is None or password is None:
-        return  # ⚠️ No authentication if not set
-```
-
-**Issues:**
-- Credentials stored in environment variables (visible in process lists)
-- No authentication when USERNAME/PASSWORD not set
-- Basic Auth over HTTP (credentials transmitted in base64, easily decoded)
-- No rate limiting on authentication attempts
-- No account lockout mechanisms
-
-**Recommendation:**
-- Implement proper authentication with hashed passwords
-- Enforce HTTPS for all authenticated endpoints
-- Add rate limiting and account lockout
-- Use secure credential storage (secrets management)
-
-#### 3. Server-Side Request Forgery (SSRF) via Feed URLs
+#### 1. Server-Side Request Forgery (SSRF) via Feed URLs
 **File:** `src/feed.py:47`, `src/feed.py:218-225`  
 **Risk:** Internal network access, data exfiltration
 
@@ -88,7 +39,7 @@ def _parse(url: str) -> feedparser.FeedParserDict:
 
 ### 🟡 **MEDIUM SEVERITY**
 
-#### 4. Command Injection via Email Subject Processing
+#### 2. Command Injection via Email Subject Processing
 **File:** `src/email.py:165-175`  
 **Risk:** Potential command injection
 
@@ -108,7 +59,7 @@ def _extract_email_subject(msg) -> str:
 - Implement length limits
 - Escape special characters before database storage
 
-#### 5. Information Disclosure in Error Messages
+#### 3. Information Disclosure in Error Messages
 **File:** `src/email.py:24-26`, `src/feed.py:89-92`  
 **Risk:** Sensitive information exposure
 
@@ -128,7 +79,7 @@ raise EmailConnectionError(
 - Log detailed errors securely for debugging
 - Avoid exposing internal system details
 
-#### 6. Insufficient Input Validation
+#### 4. Insufficient Input Validation
 **File:** `src/api/nextcloud_news/v1_3/feed.py`, `src/api/nextcloud_news/v1_2/feed.py`  
 **Risk:** Data injection, XSS
 
@@ -142,7 +93,7 @@ raise EmailConnectionError(
 - Add payload size limits
 - Validate and sanitize all user inputs
 
-#### 9. Information Disclosure via Version Endpoint
+#### 5. Information Disclosure via Version Endpoint
 **File:** `src/api/nextcloud_news/v1_3/version.py:13-16`, `src/api/nextcloud_news/v1_2/version.py:13-16`  
 **Risk:** Information disclosure
 
@@ -170,20 +121,19 @@ raise EmailConnectionError(
 
 ### 🟢 **LOW SEVERITY**
 
-#### 7. Container Security Hardening
+#### 6. Container Security Hardening
+#### 7. Dependency Security
 **File:** `pyproject.toml:7-15`  
 **Risk:** Known vulnerabilities in dependencies
 
 **Issues:**
-- No automated dependency vulnerability scanning
-- Some dependencies may have known CVEs
+- Regular dependency updates are managed by Dependabot (enabled and active)
+- Some dependencies may still have known CVEs between update cycles
 
 **Recommendation:**
-- Implement automated dependency scanning (Dependabot, Snyk)
-- Regular dependency updates
+- Continue using Dependabot for automated dependency updates
+- Monitor security advisories for critical vulnerabilities
 - Pin exact versions for reproducible builds
-
-#### 8. Dependency Security
 
 ### Logging and Monitoring
 - Implement security event logging
@@ -194,11 +144,6 @@ raise EmailConnectionError(
 - Implement database encryption at rest
 - Add data backup encryption
 - Consider database file permissions hardening
-
-### Network Security
-- Force HTTPS in production
-- Implement proper TLS configuration
-- Add Content Security Policy headers
 
 ### Rate Limiting
 - Implement API rate limiting
@@ -225,15 +170,13 @@ For production deployments, consider:
 
 ## Conclusion
 
-While headless-rss provides useful functionality, several critical security issues need immediate attention, particularly around credential storage and authentication. The application should not be deployed in production environments without addressing the HIGH severity issues identified in this review.
+While headless-rss provides useful functionality, several security issues need attention, particularly around SSRF protection and input validation. The application should not be deployed in production environments without addressing the HIGH severity issues identified in this review.
 
 **Priority Order for Fixes:**
-1. Encrypt email credentials in database
-2. Implement secure authentication mechanism
-3. Add SSRF protection for feed URLs
-4. Improve input validation and sanitization
-5. Harden container security
-6. Implement security monitoring
+1. Add SSRF protection for feed URLs
+2. Improve input validation and sanitization
+3. Harden container security
+4. Implement security monitoring
 
 ---
 
