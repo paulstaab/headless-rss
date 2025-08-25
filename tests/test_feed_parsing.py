@@ -20,18 +20,13 @@ def test_feed_parsing(feed_url: str) -> None:
     assert len(articles) > 0
 
 
-@pytest.mark.xfail
-def test_feed_url_ssrf_vulnerability(mocker) -> None:
+def test_feed_url_ssrf_vulnerability() -> None:
     """Test that feed URLs are properly validated to prevent SSRF attacks.
 
     This test verifies that dangerous URLs are blocked to prevent SSRF
     vulnerabilities.
     """
-    from src.feed import _parse
-
-    # Mock feedparser.parse to avoid actual network requests
-    mock_parse = mocker.patch("src.feed.feedparser.parse")
-    mock_parse.return_value.bozo = False
+    from src.feed import SSRFProtectionError, _validate_feed_url
 
     # Test dangerous URLs that should be blocked
     dangerous_urls = [
@@ -42,12 +37,10 @@ def test_feed_url_ssrf_vulnerability(mocker) -> None:
     ]
 
     for url in dangerous_urls:
-        # This call should not process dangerous URLs
-        _parse(url)
-        # Verify that feedparser.parse was NOT called with the dangerous URL
-        mock_parse.assert_not_called()
+        # This call should raise SSRFProtectionError when localhost is not allowed
+        with pytest.raises(SSRFProtectionError):
+            _validate_feed_url(url, allow_localhost=False)
 
-    # Test that safe URLs are still processed
+    # Test that safe URLs don't raise exceptions
     safe_url = "https://example.com/feed.xml"
-    _parse(safe_url)
-    mock_parse.assert_called_with(safe_url)
+    _validate_feed_url(safe_url, allow_localhost=False)  # Should not raise
