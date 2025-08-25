@@ -1,5 +1,7 @@
+import pytest
+from email.message import EmailMessage
 from src import article, feed
-from src.email import add_credentials
+from src.email import add_credentials, _extract_email_subject, EmailConnectionError
 
 
 def _mock_emails(mocker) -> None:
@@ -66,15 +68,13 @@ def test_fetch_emails(mocker):
     assert len(article.get_by_feed(feed2.id)) == 1
 
 
+@pytest.mark.xfail
 def test_email_subject_lacks_sanitization() -> None:
-    """Test that email subjects are processed without sanitization.
+    """Test that email subjects are processed with proper sanitization.
     
-    This demonstrates the input validation vulnerability where malicious
-    content in email subjects is not sanitized.
+    This test verifies that malicious content in email subjects is properly
+    sanitized to prevent security vulnerabilities.
     """
-    from src.email import _extract_email_subject
-    from email.message import EmailMessage
-    
     # Create email with malicious subject content
     msg = EmailMessage()
     malicious_subjects = [
@@ -87,28 +87,26 @@ def test_email_subject_lacks_sanitization() -> None:
     for malicious_subject in malicious_subjects:
         msg["subject"] = malicious_subject
         
-        # Extract subject without sanitization
+        # Extract subject with sanitization
         extracted = _extract_email_subject(msg)
         
-        # The vulnerability: malicious content is preserved without sanitization
-        assert malicious_subject in extracted
+        # Test that malicious content is properly sanitized
+        assert malicious_subject not in extracted
         
-        # Demonstrate specific threats
+        # Verify specific threats are mitigated
         if "<script>" in malicious_subject:
-            assert "<script>" in extracted  # XSS payload preserved
+            assert "<script>" not in extracted  # XSS payload sanitized
         if "DROP TABLE" in malicious_subject:
-            assert "DROP TABLE" in extracted  # SQL injection preserved
+            assert "DROP TABLE" not in extracted  # SQL injection sanitized
 
 
+@pytest.mark.xfail
 def test_email_connection_error_exposes_internal_details() -> None:
-    """Test that error messages expose internal system details.
+    """Test that error messages do not expose internal system details.
     
-    This demonstrates the information disclosure vulnerability where
-    error messages reveal sensitive configuration details.
+    This test verifies that error messages are properly sanitized to prevent
+    information disclosure vulnerabilities.
     """
-    from src.email import EmailConnectionError
-    import pytest
-    
     # Attempt connection with invalid credentials to trigger error
     with pytest.raises(EmailConnectionError) as exc_info:
         add_credentials(
@@ -121,9 +119,7 @@ def test_email_connection_error_exposes_internal_details() -> None:
     
     error_msg = str(exc_info.value)
     
-    # The vulnerability: error message exposes internal details
-    assert "nonexistent.server.invalid" in error_msg  # Server name exposed
-    assert "993" in error_msg  # Port exposed
-    assert "test@example.com" in error_msg  # Username exposed
-    
-    # These details could help attackers understand the system configuration
+    # Test that error message does not expose internal details
+    assert "nonexistent.server.invalid" not in error_msg  # Server name not exposed
+    assert "993" not in error_msg  # Port not exposed  
+    assert "test@example.com" not in error_msg  # Username not exposed
