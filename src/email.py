@@ -1,12 +1,168 @@
 import imaplib
 import logging
+import re
 from email.header import decode_header
 from email.parser import BytesParser
+from html.parser import HTMLParser
 
 from src import article, database, feed, folder
 from src.database import EmailCredential, get_session
 
 logger = logging.getLogger(__name__)
+
+
+class NewsletterHTMLCleaner(HTMLParser):
+    """HTML parser to clean up newsletter content for better readability."""
+
+    def __init__(self):
+        super().__init__()
+        self.result = []
+        self.skip_content = False
+        self.in_hidden_div = False
+        self.table_depth = 0
+        self.in_layout_table = False
+
+    def handle_starttag(self, tag, attrs):  # noqa: C901
+        """Handle start tags, filtering out problematic elements."""
+        # Skip meta tags completely
+        if tag == "meta":
+            return
+
+        # Check for hidden divs
+        if self._is_hidden_div(tag, attrs):
+            return
+
+        # Handle tables
+        if self._handle_table_start(tag, attrs):
+            return
+
+        # Skip table-related tags when in layout table mode
+        if self.in_layout_table and tag in ["tbody", "tr", "td", "th"]:
+            return
+
+        # For other tags, keep them but clean up attributes
+        self._output_cleaned_tag(tag, attrs)
+
+    def _is_hidden_div(self, tag, attrs):
+        """Check if this is a hidden div that should be skipped."""
+        if tag == "div":
+            attrs_dict = dict(attrs)
+            style = attrs_dict.get("style", "")
+            if "display: none" in style or "display:none" in style:
+                self.in_hidden_div = True
+                return True
+        return False
+
+    def _handle_table_start(self, tag, attrs):
+        """Handle table start tags, converting layout tables to divs."""
+        if tag == "table":
+            self.table_depth += 1
+            # Check if this looks like a layout table (common newsletter pattern)
+            attrs_dict = dict(attrs)
+            if (
+                attrs_dict.get("border") == "0"
+                and attrs_dict.get("cellpadding") == "0"
+                and attrs_dict.get("cellspacing") == "0"
+            ):
+                # This is likely a layout table, convert to div
+                self.in_layout_table = True
+                self.result.append("<div>")
+                return True
+            else:
+                # Keep regular tables but clean attributes
+                self.result.append("<table>")
+                return True
+        return False
+
+    def _output_cleaned_tag(self, tag, attrs):
+        """Output a tag with cleaned attributes."""
+        clean_attrs = []
+        for name, value in attrs:
+            # Keep essential attributes, remove styling and layout attributes
+            if name in ["href", "src", "alt", "title", "id"]:
+                # Filter out tracking URLs
+                if name == "src" and ("tracking" in value or "pixel" in value):
+                    continue
+                clean_attrs.append(f'{name}="{value}"')
+
+        if clean_attrs:
+            self.result.append(f"<{tag} {' '.join(clean_attrs)}>")
+        else:
+            self.result.append(f"<{tag}>")
+
+    def handle_endtag(self, tag):
+        """Handle end tags."""
+        # Skip meta tags
+        if tag == "meta":
+            return
+
+        # Handle hidden div end
+        if tag == "div" and self.in_hidden_div:
+            self.in_hidden_div = False
+            return
+
+        # Handle table structure
+        if tag == "table":
+            self.table_depth -= 1
+            if self.in_layout_table:
+                self.in_layout_table = False
+                self.result.append("</div>")
+            else:
+                self.result.append("</table>")
+            return
+
+        # Skip table-related tags when in layout table mode
+        if self.in_layout_table and tag in ["tbody", "tr", "td", "th"]:
+            return
+
+        self.result.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        """Handle text data, skipping content in hidden elements."""
+        if not self.in_hidden_div:
+            # Clean up excessive whitespace
+            cleaned_data = re.sub(r"\s+", " ", data.strip())
+            if cleaned_data:
+                self.result.append(cleaned_data)
+
+    def get_cleaned_html(self):
+        """Get the cleaned HTML result."""
+        return "".join(self.result)
+
+
+def _clean_newsletter_html(html_content):
+    """Clean HTML content from newsletters to improve readability."""
+    if not html_content:
+        return ""
+
+    # Remove tracking pixels and small images first
+    html_content = re.sub(
+        r'<img[^>]*(?:width="1"|height="1"|style="[^"]*display\s*:\s*none)[^>]*>', "", html_content, flags=re.IGNORECASE
+    )
+
+    # Parse and clean the HTML
+    cleaner = NewsletterHTMLCleaner()
+    try:
+        cleaner.feed(html_content)
+        cleaned = cleaner.get_cleaned_html()
+
+        # Post-process: remove empty divs and excessive whitespace
+        cleaned = re.sub(r"<div>\s*</div>", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        cleaned = cleaned.strip()
+
+        return cleaned
+    except Exception as e:
+        logger.warning(f"Failed to clean HTML content: {e}")
+        # Fallback: basic cleanup with regex
+        html_content = re.sub(r"<meta[^>]*>", "", html_content, flags=re.IGNORECASE)
+        html_content = re.sub(
+            r'<div[^>]*style="[^"]*display\s*:\s*none[^"]*"[^>]*>.*?</div>',
+            "",
+            html_content,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        return html_content
 
 
 class EmailConnectionError(Exception):
@@ -135,6 +291,10 @@ def process_email(raw_email) -> None:  # noqa: C901
                 content = content.decode("utf-8", errors="replace")  # Fallback
         elif not isinstance(content, str):
             content = str(content)  # Convert other types to string
+
+        # Clean HTML content for better readability in RSS readers
+        if content and content.strip().startswith("<"):
+            content = _clean_newsletter_html(content)
 
         new_article = _create_article_from_email(
             feed_id=feed_id,
