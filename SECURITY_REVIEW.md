@@ -1,8 +1,8 @@
 # Security Review Report - headless-rss
 
-**Date:** August 25, 2025  
-**Repository:** paulstaab/headless-rss  
-**Reviewer:** Security Review Bot  
+**Date:** August 25, 2025
+**Repository:** paulstaab/headless-rss
+**Reviewer:** Security Review Bot
 
 ## Executive Summary
 
@@ -18,7 +18,7 @@ This security review identified several high and medium priority security vulner
 ### 🟡 **MEDIUM SEVERITY**
 
 #### 2. Command Injection via Email Subject Processing
-**File:** `src/email.py:165-175`  
+**File:** `src/email.py:165-175`
 **Risk:** Potential command injection
 
 ```python
@@ -38,7 +38,7 @@ def _extract_email_subject(msg) -> str:
 - Escape special characters before database storage
 
 #### 3. Information Disclosure in Error Messages
-**File:** `src/email.py:24-26`, `src/feed.py:89-92`  
+**File:** `src/email.py:24-26`, `src/feed.py:89-92`
 **Risk:** Sensitive information exposure
 
 ```python
@@ -58,7 +58,7 @@ raise EmailConnectionError(
 - Avoid exposing internal system details
 
 #### 4. Insufficient Input Validation
-**File:** `src/api/nextcloud_news/v1_3/feed.py`, `src/api/nextcloud_news/v1_2/feed.py`  
+**File:** `src/api/nextcloud_news/v1_3/feed.py`, `src/api/nextcloud_news/v1_2/feed.py`
 **Risk:** Data injection, XSS
 
 **Issues:**
@@ -72,7 +72,7 @@ raise EmailConnectionError(
 - Validate and sanitize all user inputs
 
 #### 5. Information Disclosure via Version Endpoint
-**File:** `src/api/nextcloud_news/v1_3/version.py:13-16`, `src/api/nextcloud_news/v1_2/version.py:13-16`  
+**File:** `src/api/nextcloud_news/v1_3/version.py:13-16`, `src/api/nextcloud_news/v1_2/version.py:13-16`
 **Risk:** Information disclosure
 
 **Issues:**
@@ -84,7 +84,7 @@ raise EmailConnectionError(
 - Require authentication for version endpoint
 - Consider removing version disclosure entirely
 - If needed, provide minimal version information
-**File:** `Dockerfile:14-21`, `docker/entrypoint:1-14`  
+**File:** `Dockerfile:14-21`, `docker/entrypoint:1-14`
 **Risk:** Privilege escalation
 
 **Issues:**
@@ -101,7 +101,7 @@ raise EmailConnectionError(
 
 #### 6. Container Security Hardening
 #### 7. Dependency Security
-**File:** `pyproject.toml:7-15`  
+**File:** `pyproject.toml:7-15`
 **Risk:** Known vulnerabilities in dependencies
 
 **Issues:**
