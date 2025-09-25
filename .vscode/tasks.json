@@ -23,7 +23,7 @@
             "command": "uv run --dev pytest tests",
             "problemMatcher": [],
             "dependsOn": [
-                "Execute Migrations",
+                "Execute Migrations"
             ]
         },
         {
@@ -44,7 +44,7 @@
             "command": "uv run uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload",
             "problemMatcher": [],
             "dependsOn": [
-                "Execute Migrations",
+                "Execute Migrations"
             ]
         }
     ]
