@@ -1,6 +1,7 @@
 import imaplib
 import logging
 import re
+import time
 from email.header import decode_header
 from email.parser import BytesParser
 from html.parser import HTMLParser
@@ -189,9 +190,13 @@ def fetch_emails_from_all_mailboxes() -> None:
         credentials = session.query(EmailCredential).all()
     if not credentials:
         logger.info("No email credentials configured. Skipping email fetch.")
+        clean_up_old_newsletters()
         return
-    for credential in credentials:
-        fetch_emails(credential)
+    try:
+        for credential in credentials:
+            fetch_emails(credential)
+    finally:
+        clean_up_old_newsletters()
 
 
 def fetch_emails(credential: database.EmailCredential) -> None:  # noqa: C901
@@ -353,3 +358,38 @@ def _create_article_from_email(
     )
 
     return new_article
+
+
+def clean_up_old_newsletters(now_ts: int | None = None) -> int:
+    """Remove old newsletter articles that are read, unstarred, and stale.
+
+    :param now_ts: Optional timestamp override (primarily for testing).
+    :returns: Number of articles removed.
+    """
+
+    current_time = now_ts if now_ts is not None else int(time.time())
+    ninety_days_seconds = 90 * 24 * 60 * 60
+    cutoff = current_time - ninety_days_seconds
+
+    with get_session() as session:
+        articles_to_delete = (
+            session.query(database.Article)
+            .join(database.Feed, database.Feed.id == database.Article.feed_id)
+            .filter(database.Feed.is_mailing_list == True)  # noqa: E712
+            .filter(database.Article.last_modified < cutoff)
+            .filter(database.Article.unread == False)  # noqa: E712
+            .filter(database.Article.starred == False)  # noqa: E712
+            .all()
+        )
+
+        removed = len(articles_to_delete)
+
+        if removed:
+            logger.info(f"Removing {removed} old newsletter articles from database")
+
+        for stale_article in articles_to_delete:
+            session.delete(stale_article)
+
+        session.commit()
+
+    return removed

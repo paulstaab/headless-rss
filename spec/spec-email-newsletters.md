@@ -34,10 +34,11 @@
   - Preserves semantic structure (headings, lists, paragraphs) while stripping non-essential attributes.
   - Collapses excessive whitespace and returns cleaned markup; empty or `None` inputs yield an empty string.
 
-## Article Construction and Deduplication
+## Article Lifecycle
 - Articles use the email subject as the title, the sender as the author, and the cleaned body as the content.
 - GUIDs are formed as `<from_address>:<subject>`; the corresponding MD5 hash prevents duplicates.
 - Prior to insertion, the database is checked for an existing article with the same `guid_hash`; duplicates are discarded.
+- Old emails are removed from the database after every update if they are older than 90 days, read and unstarred.
 
 ## Error Handling and Logging
 - Non-mailing list emails are ignored with an informational log entry.
