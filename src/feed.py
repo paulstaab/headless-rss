@@ -187,7 +187,7 @@ def update(feed_id: int, max_articles: int = 50) -> None:
     :raises FeedParsingError: If there is an error parsing the feed.
     """
     with database.get_session() as db:
-        feed = db.query(database.Feed).get(feed_id)
+        feed = db.get(database.Feed, feed_id)
         if not feed:
             raise NoFeedError(f"Feed {feed_id} does not exist")
         logger.info(f"Feed {feed_id} ({feed.title}): Updating feed")

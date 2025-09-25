@@ -10,7 +10,7 @@
         {
             "label": "Lint",
             "type": "shell",
-            "command": "pre-commit run -a",
+            "command": "uv run --dev pre-commit run --all-files",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
@@ -18,24 +18,33 @@
             }
         },
         {
+            "label": "Run All Tests",
+            "type": "shell",
+            "command": "uv run --dev pytest tests",
+            "problemMatcher": [],
+            "dependsOn": [
+                "Execute Migrations"
+            ]
+        },
+        {
             "label": "Generate Alembic Migration",
             "type": "shell",
-            "command": "alembic revision --autogenerate -m \"New migration\"",
+            "command": "uv run alembic revision --autogenerate -m \"New migration\"",
             "problemMatcher": []
         },
         {
             "label": "Execute Migrations",
             "type": "shell",
-            "command": "alembic upgrade head",
+            "command": "uv run alembic upgrade head",
             "problemMatcher": []
         },
         {
             "label": "Start Server",
             "type": "shell",
-            "command": "uvicorn src.api.app:app --host 0.0.0.0 --port 8000",
+            "command": "uv run uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload",
             "problemMatcher": [],
             "dependsOn": [
-                "Execute Migrations",
+                "Execute Migrations"
             ]
         }
     ]
