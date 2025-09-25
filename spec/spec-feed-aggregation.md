@@ -30,7 +30,7 @@
 ## Article lifecycle
 - Deduplicate strictly on `guid_hash`; fingerprints provide additional stability across clients.
 - Articles default to `unread=True`, `starred=False`, `rtl=False` and maintain `last_modified` on each state change.
-- An automatic cleanup step removes articles older than 90 days that are read, unstarred, and absent from the current feed payload.
+- Old articles are removed from the database at the end of update if they are older than 90 days and are read, unstarred, and absent from the current feed payload.
 
 ## Scheduling and execution
 - On startup the applications performs an immediate global update and then updates all due feeds as a background task every `FEED_UPDATE_FREQUENCY_MIN` minutes (default 15).
