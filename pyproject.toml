@@ -3,7 +3,7 @@ name = "headless-rss"
 dynamic = ["version"]
 description = "A minimal-viable feed aggregator made for self-hosting"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.14.1",
     "click>=8.1.8",
