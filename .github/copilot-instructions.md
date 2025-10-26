@@ -1,6 +1,6 @@
 # headless-rss
 
-headless-rss is a minimal RSS feed aggregator designed for self-hosting. It provides a Nextcloud News compatible API and is built with Python 3.13+, FastAPI, and SQLite.
+headless-rss is a minimal RSS feed aggregator designed for self-hosting. It provides a Nextcloud News compatible API and is built with Python 3.14+, FastAPI, and SQLite.
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
