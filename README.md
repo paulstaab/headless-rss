@@ -59,6 +59,26 @@ Replace the placeholders with your actual email server details.
 - Please submit an issue for feature requests before creating a pull-request.
   I want to keep this project as small as possible.
 
+## Testing
+
+The project includes comprehensive test coverage:
+
+- **Unit Tests**: Located in `tests/` for testing individual components
+- **API Tests**: Testing the Nextcloud News compatible API endpoints
+- **E2E Tests**: End-to-end tests in `tests/e2e/` that validate the complete user journey against the Docker container image
+
+To run all tests:
+```bash
+uv run --dev pytest tests
+```
+
+To run only E2E tests (requires Docker):
+```bash
+uv run --dev pytest tests/e2e/
+```
+
+The E2E tests will automatically skip if Docker is unavailable or if the build fails.
+
 
 ## License
 
