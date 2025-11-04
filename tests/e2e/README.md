@@ -4,7 +4,7 @@ This directory contains end-to-end tests for the headless-rss application that t
 
 ## Test Coverage
 
-The E2E test suite (`test_container.py`) validates a complete user journey:
+The E2E test suite validates a complete user journey:
 
 1. **Adding a feed** - Creates a new RSS/Atom feed subscription
 2. **Loading articles** - Retrieves articles from the feed
@@ -15,42 +15,49 @@ The E2E test suite (`test_container.py`) validates a complete user journey:
 
 ## Running the Tests
 
-The E2E tests will automatically:
-1. Build the Docker image from the Dockerfile
-2. Start a container with the image
-3. Run the test scenarios against the containerized application
-4. Clean up all resources (container and image)
+### In CI (Main Branch Only)
 
-To run the E2E tests:
+The E2E tests automatically run on the `main` branch as part of the release workflow:
+1. After the Docker image is built
+2. Before the image is pushed to the registry
+3. Tests the actual image that will be released
+
+### Locally
+
+You can run the E2E test against any Docker image:
+
+```bash
+# Test a local image
+python tests/e2e/run_e2e_test.py headless-rss:latest
+
+# Test the published image
+python tests/e2e/run_e2e_test.py ghcr.io/paulstaab/headless-rss:latest
+```
+
+Requirements for local testing:
+- Docker must be installed and accessible
+- Python 3.13+ with httpx installed (`uv run --dev python tests/e2e/run_e2e_test.py <image>`)
+
+## Test Architecture
+
+The E2E tests use:
+- Standalone Python script (`run_e2e_test.py`) for orchestration
+- `httpx` for making HTTP requests to the containerized API
+- Python's built-in HTTP server for serving test RSS/Atom feeds
+- Docker CLI for container management
+
+The script:
+1. Starts a local HTTP server to serve test feeds
+2. Starts a container from the specified image
+3. Runs the complete user journey test
+4. Cleans up all resources (container, server, temp files)
+
+## Legacy Pytest Tests
+
+The `conftest.py` and `test_container.py` files are the original pytest-based E2E tests that build their own Docker image. These are no longer run in CI but can still be used for local development if needed:
 
 ```bash
 pytest tests/e2e/
 ```
 
-## Requirements
-
-- Docker must be installed and accessible
-- Network access to download dependencies during Docker build
-- Ports 9000-9999 available for the test container
-
-## Skipped Tests
-
-The tests will be automatically skipped if:
-- Docker build fails (e.g., in environments with SSL certificate issues)
-- Docker is not available
-- Container fails to start
-
-This is expected behavior in CI environments with restricted network access or sandboxed environments.
-
-## Test Architecture
-
-The E2E tests use:
-- `pytest` for test orchestration
-- `httpx` for making HTTP requests to the containerized API
-- `pytest-httpserver` for serving test RSS/Atom feeds
-- Docker CLI for container management
-
-The test fixtures in `conftest.py` handle:
-- Building the Docker image (module-scoped)
-- Managing container lifecycle (function-scoped)
-- Serving test feeds via HTTP server
+These tests will skip if Docker build fails (e.g., in sandboxed environments).

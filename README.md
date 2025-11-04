@@ -67,17 +67,17 @@ The project includes comprehensive test coverage:
 - **API Tests**: Testing the Nextcloud News compatible API endpoints
 - **E2E Tests**: End-to-end tests in `tests/e2e/` that validate the complete user journey against the Docker container image
 
-To run all tests:
+To run unit and API tests:
 ```bash
-uv run --dev pytest tests
+uv run --dev pytest tests --ignore=tests/e2e
 ```
 
-To run only E2E tests (requires Docker):
+To run E2E tests against a Docker image:
 ```bash
-uv run --dev pytest tests/e2e/
+uv run --dev python tests/e2e/run_e2e_test.py <image_name>
 ```
 
-The E2E tests will automatically skip if Docker is unavailable or if the build fails.
+The E2E tests automatically run on the `main` branch in CI after the image is built and before it's pushed to the registry.
 
 
 ## License

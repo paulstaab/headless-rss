@@ -47,7 +47,7 @@ jobs:
         enable-cache: true
     - name: Run tests
       run: |
-        uv run --dev pytest tests
+        uv run --dev pytest tests --ignore=tests/e2e
     - name: Run Alembic migrations
       run: |
         uv run --dev alembic upgrade head
@@ -71,6 +71,24 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build Docker image for E2E test
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        load: true
+        tags: ghcr.io/${{ github.repository }}:e2e-test
+        platforms: linux/amd64
+    - name: Set up Python for E2E test
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - name: Install uv for E2E test
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+    - name: Run E2E test
+      run: |
+        uv run --dev python tests/e2e/run_e2e_test.py ghcr.io/${{ github.repository }}:e2e-test
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
       with:
