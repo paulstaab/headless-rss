@@ -1,3 +1,4 @@
+import random
 import subprocess
 import time
 from collections.abc import Generator
@@ -47,19 +48,20 @@ def feed_server(make_httpserver):
             content_type="application/xml",
         )
 
-    httpserver = make_httpserver
-    httpserver.expect_request("/atom.xml").respond_with_handler(lambda x: _respond_with_file(x, "feeds/atom.xml"))
-    httpserver.expect_request("/github_releases.atom").respond_with_handler(
+    make_httpserver.expect_request("/atom.xml").respond_with_handler(lambda x: _respond_with_file(x, "feeds/atom.xml"))
+    make_httpserver.expect_request("/github_releases.atom").respond_with_handler(
         lambda x: _respond_with_file(x, "feeds/github_releases.atom")
     )
-    httpserver.expect_request("/feed_without_ids.xml").respond_with_handler(
+    make_httpserver.expect_request("/feed_without_ids.xml").respond_with_handler(
         lambda x: _respond_with_file(x, "feeds/feed_without_ids.xml")
     )
-    httpserver.expect_request("/rss_2_0.xml").respond_with_handler(lambda x: _respond_with_file(x, "feeds/rss_2_0.xml"))
-    httpserver.expect_request("/atom_1_0.xml").respond_with_handler(
+    make_httpserver.expect_request("/rss_2_0.xml").respond_with_handler(
+        lambda x: _respond_with_file(x, "feeds/rss_2_0.xml")
+    )
+    make_httpserver.expect_request("/atom_1_0.xml").respond_with_handler(
         lambda x: _respond_with_file(x, "feeds/atom_1_0.xml")
     )
-    return httpserver
+    return make_httpserver
 
 
 @pytest.fixture
@@ -70,8 +72,6 @@ def container(docker_image: str, tmp_path: Path, feed_server) -> Generator[str]:
     data_dir.mkdir(exist_ok=True)
 
     # Use a random port to avoid conflicts
-    import random
-
     port = random.randint(9000, 9999)
 
     # Start the container with the data directory mounted
