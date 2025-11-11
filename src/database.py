@@ -1,7 +1,10 @@
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Column, Engine, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _engine: Engine | None = None
 _session_maker: sessionmaker | None = None
