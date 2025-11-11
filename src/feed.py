@@ -422,6 +422,11 @@ def delete(feed_id: int) -> None:
         feed = db.query(database.Feed).filter(database.Feed.id == feed_id).first()
         if not feed:
             raise NoFeedError(f"Feed {feed_id} not found")
+
+        # Delete associated articles
+        db.query(database.Article).filter(database.Article.feed_id == feed_id).delete()
+
+        # Delete the feed
         db.delete(feed)
         db.commit()
 
