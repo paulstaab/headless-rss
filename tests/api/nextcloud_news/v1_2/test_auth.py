@@ -1,8 +1,11 @@
 import base64
 import os
+from typing import TYPE_CHECKING
 
 import pytest
-from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True, scope="module")

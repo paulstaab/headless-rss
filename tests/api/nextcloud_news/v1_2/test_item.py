@@ -1,5 +1,9 @@
-from fastapi.testclient import TestClient
+from typing import TYPE_CHECKING
+
 from src.feed import now
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def test_get_items(client: TestClient, feed_server) -> None:
