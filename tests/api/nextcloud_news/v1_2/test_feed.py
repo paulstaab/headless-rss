@@ -72,11 +72,16 @@ def test_delete_feed(client: TestClient, feed_server) -> None:
     # when
     response = client.delete(f"/feeds/{feed_id}")
 
-    # then
+    # then - feed is deleted
     assert response.status_code == 200
     response = client.get("/feeds")
     feeds = response.json()["feeds"]
-    assert len(feeds) == 0
+    assert len(feeds) == 0, "Feed was not deleted"
+
+    # then - articles are also deleted
+    response = client.get("/items", params={"type": 0, "id": feed_id})
+    items = response.json()["items"]
+    assert len(items) == 0, "Feed items were not deleted"
 
 
 def test_delete_non_existent_feed(client: TestClient) -> None:
