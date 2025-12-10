@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi_utilities import repeat_every  # type: ignore
 
 from src import database, feed
@@ -28,6 +29,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to support browser clients
+# Using allow_origins=["*"] to support static web apps from any origin.
+# Since this is designed for self-hosting, users can restrict origins
+# via a reverse proxy if needed. allow_credentials=False ensures the
+# wildcard origin is properly returned in responses.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(nextcloud_router, prefix="/index.php/apps/news/api")
 
