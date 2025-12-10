@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Add CORS middleware to support browser clients
+# Using allow_origins=["*"] to support static web apps from any origin.
+# Since this is designed for self-hosting, users can restrict origins
+# via a reverse proxy if needed. allow_credentials=False ensures the
+# wildcard origin is properly returned in responses.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
