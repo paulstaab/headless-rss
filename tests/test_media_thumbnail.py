@@ -153,4 +153,3 @@ class TestFeedIntegrationWithMediaThumbnail:
         # Article 3: No images
         article3 = [a for a in articles if "Article without Images" in (a.title or "")][0]
         assert article3.media_thumbnail is None
-

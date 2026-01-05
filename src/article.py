@@ -27,8 +27,9 @@ def extract_first_image_url(html_content: str | None) -> str | None:
         return None
 
     # Use regex to find the first img tag with src attribute
-    # This matches both single and double quotes, and handles various spacing
-    img_pattern = r'<img[^>]+src=["\'](.*?)["\']'
+    # Pattern matches src="..." or src='...' and captures the URL
+    # Uses a non-greedy match with character class to prevent capturing across quotes
+    img_pattern = r'<img[^>]+src=["\']([^"\']+)["\']'
     match = re.search(img_pattern, html_content, re.IGNORECASE)
 
     if match:
