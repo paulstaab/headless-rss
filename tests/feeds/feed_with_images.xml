@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Feed with Images</title>
+  <link href="http://example.org/"/>
+  <updated>2024-01-30T12:34:56Z</updated>
+  <id>tag:example.org,2024:feed-with-images</id>
+  <entry>
+    <title>Article with Image in Content</title>
+    <link href="http://example.org/article1"/>
+    <id>tag:example.org,2024:article1</id>
+    <updated>2024-01-30T12:34:56Z</updated>
+    <published>2024-01-30T12:34:56Z</published>
+    <content type="html">
+      &lt;p&gt;This is an article with an image.&lt;/p&gt;
+      &lt;img src="https://example.com/image1.jpg" alt="Test Image"&gt;
+      &lt;p&gt;More content here.&lt;/p&gt;
+    </content>
+  </entry>
+  <entry>
+    <title>Article with Multiple Images</title>
+    <link href="http://example.org/article2"/>
+    <id>tag:example.org,2024:article2</id>
+    <updated>2024-01-30T12:34:56Z</updated>
+    <published>2024-01-30T12:34:56Z</published>
+    <content type="html">
+      &lt;p&gt;This article has multiple images.&lt;/p&gt;
+      &lt;img src="https://example.com/first.jpg" alt="First"&gt;
+      &lt;p&gt;Some text&lt;/p&gt;
+      &lt;img src="https://example.com/second.jpg" alt="Second"&gt;
+    </content>
+  </entry>
+  <entry>
+    <title>Article without Images</title>
+    <link href="http://example.org/article3"/>
+    <id>tag:example.org,2024:article3</id>
+    <updated>2024-01-30T12:34:56Z</updated>
+    <published>2024-01-30T12:34:56Z</published>
+    <content type="html">
+      &lt;p&gt;This article has no images, just text.&lt;/p&gt;
+    </content>
+  </entry>
+</feed>
