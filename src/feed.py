@@ -259,6 +259,14 @@ def _create_article(new_article, feed_id: int) -> database.Article:
     except (TypeError, ValueError, KeyError):
         pub_date = updated_date
 
+    # Extract media_thumbnail from feedparser if available
+    media_thumbnail: str | None = None
+    if "media_thumbnail" in new_article and new_article["media_thumbnail"]:
+        # feedparser returns a list of thumbnails, use the first one if available
+        thumbnails = new_article["media_thumbnail"]
+        if len(thumbnails) > 0:
+            media_thumbnail = thumbnails[0].get("url")
+
     return article.create(
         feed_id=feed_id,
         title=title,
@@ -267,6 +275,7 @@ def _create_article(new_article, feed_id: int) -> database.Article:
         enclosure_link=new_article.get("enclosure_link"),
         enclosure_mime=new_article.get("enclosure_mime"),
         guid=guid,
+        media_thumbnail=media_thumbnail,
         pub_date=pub_date,
         updated_date=updated_date,
         url=url,

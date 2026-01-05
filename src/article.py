@@ -1,3 +1,4 @@
+import re
 import time
 from hashlib import md5
 
@@ -16,6 +17,27 @@ def now() -> int:
     return int(time.time())
 
 
+def extract_first_image_url(html_content: str | None) -> str | None:
+    """Extract the URL of the first image from HTML content.
+
+    :param html_content: The HTML content to extract the image from.
+    :returns: The URL of the first image, or None if no image is found.
+    """
+    if not html_content:
+        return None
+
+    # Use regex to find the first img tag with src attribute
+    # Pattern matches src="..." or src='...' and captures the URL
+    # Uses a non-greedy match with character class to prevent capturing across quotes
+    img_pattern = r'<img[^>]+src=["\']([^"\']+)["\']'
+    match = re.search(img_pattern, html_content, re.IGNORECASE)
+
+    if match:
+        return match.group(1)
+
+    return None
+
+
 def create(
     feed_id: int,
     title: str | None,
@@ -27,8 +49,13 @@ def create(
     updated_date: int | None = None,
     enclosure_link: str | None = None,
     enclosure_mime: str | None = None,
+    media_thumbnail: str | None = None,
 ) -> database.Article:
     """Create a new article."""
+    # Use provided media_thumbnail or fall back to first image in content
+    if not media_thumbnail:
+        media_thumbnail = extract_first_image_url(content)
+
     return database.Article(
         title=title,
         author=author,
@@ -42,6 +69,7 @@ def create(
         guid=guid,
         guid_hash=_hash(guid),
         last_modified=now(),
+        media_thumbnail=media_thumbnail,
         pub_date=pub_date or now(),
         rtl=False,
         starred=False,
