@@ -1,10 +1,11 @@
 """API"""
 
-import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
+from src.options import Options
 
 from . import feed, folder, item, version
 
@@ -20,8 +21,9 @@ def get_current_username(credentials: Annotated[HTTPBasicCredentials, Depends(se
     :returns: The username if authentication is successful.
     :raises HTTPException: If authentication fails.
     """
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    options = Options.get()
+    username = options.username
+    password = options.password
     if username is None or password is None:
         return
     if credentials is None:

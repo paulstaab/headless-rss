@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import werkzeug
 from src import database
+from src.options import Options
 
 
 @pytest.fixture(autouse=True)
@@ -12,6 +13,21 @@ def db(tmp_path: Path):
     with database.get_session() as db:
         database.Base.metadata.create_all(bind=db.get_bind())
         yield db
+
+
+@pytest.fixture(autouse=True, scope="session")
+def disable_openai_calls() -> None:
+    """Disable OpenAI API calls during tests."""
+    import os
+
+    os.environ.pop("OPENAI_API_KEY", None)
+    os.environ.pop("OPENAI_MODEL", None)
+
+
+@pytest.fixture(autouse=True)
+def clear_options_cache() -> None:
+    """Reset the options so that each test can set its own environment variables."""
+    Options.clear()
 
 
 def _respond_with_file(request, file_name: str) -> werkzeug.Response:
