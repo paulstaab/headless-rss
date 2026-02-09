@@ -232,7 +232,8 @@ def _maybe_check_feed_quality(db: database.Session, feed: database.Feed, entries
     article_text = extracted_text or feed_content or ""
 
     feed.use_extracted_fulltext = _check_fulltext_quality(extracted_text, feed_content)
-    feed.use_llm_summary = _check_summary_quality(article_text, feed_summary)
+    summary_is_good = _check_summary_quality(article_text, feed_summary)
+    feed.use_llm_summary = not summary_is_good
     feed.last_quality_check = now()
     db.commit()
     logger.info(
