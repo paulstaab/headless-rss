@@ -429,12 +429,12 @@ def _parse_newsletter_with_llm(subject: str, from_address: str, content: str) ->
         return None
 
     try:
-        response_json = _call_openai_responses_api(subject, from_address, trimmed_content)
+        response_obj = _call_openai_responses_api(subject, from_address, trimmed_content)
     except Exception as exc:
         logger.warning(f"LLM newsletter parsing failed: {exc}")
         return None
 
-    response_text = _extract_openai_response_text(response_json)
+    response_text = _extract_openai_response_text(response_obj)
     if not response_text:
         return None
 
