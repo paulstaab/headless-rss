@@ -92,11 +92,15 @@ def test_llm_newsletter_parsing_creates_multiple_articles(mocker, monkeypatch):
         ],
     }
 
+    mock_message = mocker.Mock()
+    mock_message.content = json.dumps(response_payload)
+    mock_choice = mocker.Mock()
+    mock_choice.message = mock_message
     mock_response = mocker.Mock()
-    mock_response.output_text = json.dumps(response_payload)
+    mock_response.choices = [mock_choice]
 
     client_instance = mocker.Mock()
-    client_instance.responses.create.return_value = mock_response
+    client_instance.chat.completions.create.return_value = mock_response
 
     mocker.patch("src.email.OpenAI", return_value=client_instance)
 
@@ -131,11 +135,15 @@ def test_llm_newsletter_parsing_creates_single_article(mocker, monkeypatch):
         "content": "Cleaned content text",
     }
 
+    mock_message = mocker.Mock()
+    mock_message.content = json.dumps(response_payload)
+    mock_choice = mocker.Mock()
+    mock_choice.message = mock_message
     mock_response = mocker.Mock()
-    mock_response.output_text = json.dumps(response_payload)
+    mock_response.choices = [mock_choice]
 
     client_instance = mocker.Mock()
-    client_instance.responses.create.return_value = mock_response
+    client_instance.chat.completions.create.return_value = mock_response
 
     mocker.patch("src.email.OpenAI", return_value=client_instance)
 
