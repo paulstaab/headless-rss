@@ -21,6 +21,8 @@ different protocols, multiple users or databases other than sqlite, please look 
 - [x] Can be hosted with a single unprivileged docker container.
 - [x] Low resource usage (~1/4 efficiency core, 75 MB RAM).
 - [x] Updates feeds on a dynamic schedule based on their post frequency.
+- [x] Automatic full-text extraction for truncated feeds.
+- [x] AI-powered article summarization (OpenAI).
 
 ## Usage Instructions
 Start the API with:
@@ -39,10 +41,11 @@ The `USERNAME` and `PASSWORD` environment variables are optional to enable authe
 The `FEED_UPDATE_FREQUENCY_MIN` environment variable is optional to set the update frequency for feeds
 in minutes (default is 15 minutes).
 
-The `OPENAI_API_KEY` environment variable is optional to enable LLM-based parsing for email newsletters.
-When set, newsletters are parsed with the model specified by `OPENAI_MODEL` (default: `gpt-5-mini`).
-If a newsletter contains a list of article links with short descriptions, each link becomes a separate
-article. Otherwise, the newsletter is stored as a single article with a concise summary.
+The `OPENAI_API_KEY` environment variable is optional. When set, it enables:
+1. **AI Summaries**: Automatically generates summaries for articles if the feed detects poor quality summaries.
+2. **Newsletter Parsing**: Intelligent parsing of email newsletters (splitting digest emails into separate articles).
+
+Use `OPENAI_MODEL` to specify the model (default: `gpt-5-mini`).
 
 ## Email Newsletter Integration
 
