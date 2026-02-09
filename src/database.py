@@ -78,6 +78,9 @@ class Feed(Base):
     update_error_count: Mapped[int] = mapped_column(default=0)
     last_update_error: Mapped[str | None] = mapped_column(default=None)
     is_mailing_list: Mapped[bool] = mapped_column(default=False)
+    last_quality_check: Mapped[int | None] = mapped_column(default=None)
+    use_extracted_fulltext: Mapped[bool] = mapped_column(default=False)
+    use_llm_summary: Mapped[bool] = mapped_column(default=False)
 
 
 class Folder(Base):

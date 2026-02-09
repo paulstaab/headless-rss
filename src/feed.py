@@ -9,13 +9,21 @@ from urllib.parse import urlparse
 import feedparser
 
 from src import article, database, email
+from src.content import (
+    extract_article,
+    is_summary_good_with_llm,
+    normalize_text,
+    summarize_article_with_llm,
+)
 from src.folder import NoFolderError
+from src.options import Options
 
 logger = logging.getLogger(__name__)
 
 thirty_minutes = 1_800
 twelve_hours = 43_200
 one_day = 86_400
+one_month = 30 * one_day
 
 
 class NoFeedError(Exception):
@@ -140,6 +148,100 @@ def now() -> int:
     return int(time.time())
 
 
+def _safe_extract_article_text(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        _validate_feed_url(url)
+    except SSRFProtectionError as exc:
+        logger.warning(f"Blocked article url for extraction: {exc}")
+        return None
+    extracted_text = extract_article(url)
+    logger.info(f"Extracted text of length {len(extracted_text) if extracted_text else 0} from article URL: {url}")
+    return extracted_text
+
+
+def _needs_quality_check(feed: database.Feed) -> bool:
+    if feed.last_quality_check is None:
+        return True
+    return now() - feed.last_quality_check > one_month
+
+
+def _select_quality_sample(entries) -> dict | None:
+    for entry in entries:
+        if entry.get("link") and (entry.get("summary") or entry.get("content")):
+            return entry
+    return None
+
+
+def _check_summary_quality(article_text: str, summary: str | None) -> bool:
+    if not summary:
+        return True
+
+    normalized_summary = normalize_text(summary)
+    normalized_article = normalize_text(article_text)
+    half_length = len(normalized_summary) // 2
+    if half_length > 0 and normalized_article.startswith(normalized_summary[:half_length]):
+        return True
+
+    if Options.get().llm_enabled:
+        # Check LLM enabled again to be safe, though called only if enabled usually
+        is_good = is_summary_good_with_llm(article_text, summary)
+        if is_good is None:
+            return False
+        return is_good
+    else:
+        return False
+
+
+def _check_fulltext_quality(
+    extracted_text: str | None,
+    feed_content: str | None,
+) -> bool:
+    """Determine if the extracted fulltext is of better quality compared to the feed content."""
+    if not extracted_text:
+        return False
+
+    feed_length = len(normalize_text(feed_content))
+    extracted_length = len(normalize_text(extracted_text))
+
+    if extracted_length == 0:
+        return False
+
+    # Use extracted fulltext if it's significantly longer than the feed content length
+    return extracted_length >= 2 * feed_length
+
+
+def _maybe_check_feed_quality(db: database.Session, feed: database.Feed, entries) -> None:
+    """Check the quality of the feed's content and summaries, and update feed settings accordingly."""
+    if not _needs_quality_check(feed):
+        return
+
+    logger.info(f"Feed {feed.id} ({feed.title}): Performing quality check")
+    sample = _select_quality_sample(entries)
+    if not sample:
+        logger.info(f"Feed {feed.id} ({feed.title}): No suitable article found for quality check. Skipping it.")
+        return
+
+    feed_content_list = sample.get("content")
+    feed_content = feed_content_list[0]["value"] if feed_content_list else sample.get("summary")
+    feed_summary = sample.get("summary")
+    article_url = sample.get("link")
+
+    extracted_text = _safe_extract_article_text(article_url)
+    article_text = extracted_text or feed_content or ""
+
+    feed.use_extracted_fulltext = _check_fulltext_quality(extracted_text, feed_content)
+    feed.use_llm_summary = _check_summary_quality(article_text, feed_summary)
+    feed.last_quality_check = now()
+    db.commit()
+    logger.info(
+        f"Feed {feed.id} ({feed.title}): Quality check complete. "
+        f"use_extracted_fulltext={feed.use_extracted_fulltext}, "
+        f"use_llm_summary={feed.use_llm_summary}"
+    )
+
+
 def _create(url: str, folder_id: int) -> database.Feed:
     """Create a new feed in the database.
 
@@ -205,6 +307,8 @@ def update(feed_id: int, max_articles: int = 50) -> None:
             feed.last_update_error = None
             db.commit()
 
+        _maybe_check_feed_quality(db=db, feed=feed, entries=parsed_feed.entries)
+
         feed_article_guid_hashes = []
         n_new_articles = 0
 
@@ -212,7 +316,7 @@ def update(feed_id: int, max_articles: int = 50) -> None:
             if idx >= max_articles:
                 break
             try:
-                db_article = _create_article(new_article, feed_id)
+                db_article = _create_article(new_article, feed)
                 feed_article_guid_hashes.append(db_article.guid_hash)
 
                 existing_article = db.query(database.Article).filter_by(guid_hash=db_article.guid_hash).first()
@@ -233,16 +337,17 @@ def update(feed_id: int, max_articles: int = 50) -> None:
     clean_up_old_articles(feed_id, feed_article_guid_hashes)
 
 
-def _create_article(new_article, feed_id: int) -> database.Article:
+def _create_article(new_article, feed: database.Feed) -> database.Article:
     """Create a new article in the database.
 
     :param new_article: The article data to create.
     :param feed_id: The ID of the feed to associate with the article.
     :returns: The created article.
     """
-    content: str | None = (
+    feed_content: str | None = (
         new_article.get("content")[0]["value"] if "content" in new_article else new_article.get("summary")
     )
+    feed_summary: str | None = new_article.get("summary")
     title: str | None = new_article.get("title")
     url: str | None = new_article.get("link")
     guid: str | None = new_article.get("id") or new_article.get("link") or new_article.get("title")
@@ -267,8 +372,21 @@ def _create_article(new_article, feed_id: int) -> database.Article:
         if len(thumbnails) > 0:
             media_thumbnail = thumbnails[0].get("url")
 
+    content = feed_content
+    if feed.use_extracted_fulltext and url:
+        extracted_text = _safe_extract_article_text(url)
+        if extracted_text:
+            content = extracted_text
+
+    summary = feed_summary
+    if feed.use_llm_summary and Options.get().llm_enabled and content:
+        llm_summary = summarize_article_with_llm(content)
+        if llm_summary:
+            logger.info(f"Generated LLM summary of length {len(llm_summary)} for article GUID: {guid}")
+            summary = llm_summary
+
     return article.create(
-        feed_id=feed_id,
+        feed_id=feed.id,
         title=title,
         author=new_article.get("author"),
         content=content,
@@ -276,6 +394,7 @@ def _create_article(new_article, feed_id: int) -> database.Article:
         enclosure_mime=new_article.get("enclosure_mime"),
         guid=guid,
         media_thumbnail=media_thumbnail,
+        media_description=summary,
         pub_date=pub_date,
         updated_date=updated_date,
         url=url,
