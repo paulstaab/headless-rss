@@ -39,6 +39,11 @@ The `USERNAME` and `PASSWORD` environment variables are optional to enable authe
 The `FEED_UPDATE_FREQUENCY_MIN` environment variable is optional to set the update frequency for feeds
 in minutes (default is 15 minutes).
 
+The `OPENAI_API_KEY` environment variable is optional to enable LLM-based parsing for email newsletters.
+When set, newsletters are parsed with the model specified by `OPENAI_MODEL` (default: `gpt-5-mini`).
+If a newsletter contains a list of article links with short descriptions, each link becomes a separate
+article. Otherwise, the newsletter is stored as a single article with a concise summary.
+
 ## Email Newsletter Integration
 
 `headless-rss` can connect to an existing email account via IMAP and display email

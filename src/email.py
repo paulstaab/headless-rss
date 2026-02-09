@@ -1,4 +1,5 @@
 import imaplib
+import json
 import logging
 import re
 import time
@@ -6,10 +7,18 @@ from email.header import decode_header
 from email.parser import BytesParser
 from html.parser import HTMLParser
 
+from openai import OpenAI
+
 from src import article, database, feed, folder
 from src.database import EmailCredential, get_session
+from src.options import Options
 
 logger = logging.getLogger(__name__)
+
+
+OPENAI_TIMEOUT_SECONDS = 10
+NEWSLETTER_MAX_CHARS = 5000
+NEWSLETTER_MAX_ITEMS = 25
 
 
 class NewsletterHTMLCleaner(HTMLParser):
@@ -292,7 +301,7 @@ def process_email(raw_email) -> None:  # noqa: C901
             charset = msg.get_content_charset() or "utf-8"
             try:
                 content = content.decode(charset, errors="replace")
-            except (LookupError, UnicodeDecodeError):
+            except LookupError, UnicodeDecodeError:
                 content = content.decode("utf-8", errors="replace")  # Fallback
         elif not isinstance(content, str):
             content = str(content)  # Convert other types to string
@@ -301,17 +310,22 @@ def process_email(raw_email) -> None:  # noqa: C901
         if content and content.strip().startswith("<"):
             content = _clean_newsletter_html(content)
 
-        new_article = _create_article_from_email(
+        new_articles = _create_articles_from_email(
             feed_id=feed_id,
             subject=subject,
             from_address=from_address,
             content=content,
         )
-        existing_article = session.query(database.Article).filter_by(guid_hash=new_article.guid_hash).first()
-        if not existing_article:
+        added_count = 0
+        for new_article in new_articles:
+            existing_article = session.query(database.Article).filter_by(guid_hash=new_article.guid_hash).first()
+            if existing_article:
+                continue
             session.add(new_article)
+            added_count += 1
+        if added_count:
             session.commit()
-            logger.info(f"Added email '{subject}' to feed '{feed_title}'")
+            logger.info(f"Added {added_count} email article(s) for '{subject}' to feed '{feed_title}'")
 
 
 def _extract_sender_address(msg) -> str:
@@ -349,15 +363,211 @@ def _create_article_from_email(
     subject: str,
     from_address: str,
     content: str,
+    summary: str | None = None,
+    url: str | None = None,
 ) -> database.Article:
     """Create an article from email data."""
-    guid = from_address + ":" + subject
+    guid = f"{from_address}:{subject}" if not url else f"{from_address}:{subject}:{url}"
 
     new_article = article.create(
-        feed_id=feed_id, title=subject, author=from_address, content=content, guid=guid, url=None
+        feed_id=feed_id,
+        title=subject,
+        author=from_address,
+        content=content,
+        guid=guid,
+        url=url,
+        media_description=summary,
     )
 
     return new_article
+
+
+def _create_articles_from_email(
+    feed_id: int,
+    subject: str,
+    from_address: str,
+    content: str,
+) -> list[database.Article]:
+    llm_result = _parse_newsletter_with_llm(subject=subject, from_address=from_address, content=content)
+    if not llm_result:
+        return [_create_article_from_email(feed_id, subject, from_address, content)]
+
+    if llm_result.get("mode") == "multi":
+        items = llm_result.get("items") or []
+        articles: list[database.Article] = []
+        for item in items[:NEWSLETTER_MAX_ITEMS]:
+            url = item.get("url")
+            if not url:
+                continue
+            title = item.get("title") or subject
+            item_summary = item.get("summary")
+            item_content = item.get("content") or item_summary or ""
+            articles.append(
+                _create_article_from_email(
+                    feed_id=feed_id,
+                    subject=title,
+                    from_address=from_address,
+                    content=item_content,
+                    summary=item_summary,
+                    url=url,
+                )
+            )
+        if articles:
+            return articles
+
+    summary = llm_result.get("summary")
+    formatted_content = llm_result.get("content") or content
+    return [_create_article_from_email(feed_id, subject, from_address, formatted_content, summary=summary)]
+
+
+def _parse_newsletter_with_llm(subject: str, from_address: str, content: str) -> dict | None:
+    if not _llm_enabled():
+        return None
+
+    trimmed_content = _trim_newsletter_content(content)
+    if not trimmed_content:
+        return None
+
+    try:
+        response_json = _call_openai_responses_api(subject, from_address, trimmed_content)
+    except Exception as exc:
+        logger.warning(f"LLM newsletter parsing failed: {exc}")
+        return None
+
+    response_text = _extract_openai_response_text(response_json)
+    if not response_text:
+        return None
+
+    try:
+        parsed = json.loads(response_text)
+    except json.JSONDecodeError:
+        logger.warning("LLM response was not valid JSON")
+        return None
+
+    return _normalize_llm_result(parsed)
+
+
+def _llm_enabled() -> bool:
+    return Options.get().llm_enabled
+
+
+def _trim_newsletter_content(content: str) -> str:
+    if not content:
+        return ""
+    return content[:NEWSLETTER_MAX_CHARS]
+
+
+def _call_openai_responses_api(subject: str, from_address: str, content: str):
+    api_key = Options.get().openai_api_key
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not set")
+
+    payload = _build_openai_payload(subject, from_address, content)
+    client = OpenAI(api_key=api_key, timeout=OPENAI_TIMEOUT_SECONDS)
+    return client.responses.create(**payload)
+
+
+def _build_openai_payload(subject: str, from_address: str, content: str) -> dict:
+    options = Options.get()
+    instructions = (
+        "You are parsing a newsletter email. Decide if it is a list of distinct article links "
+        "with short descriptions. If yes, return mode=multi with an ordered list of items. "
+        "If no, return mode=single with a cleaned content field and a concise summary. "
+        "Always keep formatting minimal: paragraphs, lists, and links only."
+    )
+
+    user_prompt = "Subject: " + subject + "\nFrom: " + from_address + "\n\nContent:\n" + content
+
+    schema = {
+        "name": "newsletter_parse",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "enum": ["single", "multi"]},
+                "summary": {"type": "string"},
+                "content": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "url": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["url"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["mode"],
+            "additionalProperties": False,
+        },
+    }
+
+    return {
+        "model": options.openai_model,
+        "input": [
+            {"role": "system", "content": [{"type": "text", "text": instructions}]},
+            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+        ],
+        "response_format": {"type": "json_schema", "json_schema": schema},
+    }
+
+
+def _extract_openai_response_text(response) -> str | None:
+    if response is None:
+        return None
+
+    output_text = getattr(response, "output_text", None)
+    if output_text:
+        return output_text
+
+    if hasattr(response, "model_dump"):
+        response_json = response.model_dump()
+    elif isinstance(response, dict):
+        response_json = response
+    else:
+        return None
+
+    if "output_text" in response_json:
+        return response_json.get("output_text")
+
+    for output in response_json.get("output", []):
+        for part in output.get("content", []):
+            if part.get("type") in ("output_text", "text"):
+                return part.get("text")
+    return None
+
+
+def _normalize_llm_result(result: dict) -> dict:
+    normalized: dict = {"mode": result.get("mode")}
+    if result.get("summary"):
+        normalized["summary"] = result.get("summary")
+    if result.get("content"):
+        normalized["content"] = result.get("content")
+
+    items = result.get("items")
+    if isinstance(items, list):
+        cleaned_items = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("url")
+            if not url:
+                continue
+            cleaned_items.append(
+                {
+                    "title": item.get("title"),
+                    "url": url,
+                    "summary": item.get("summary"),
+                    "content": item.get("content"),
+                }
+            )
+        if cleaned_items:
+            normalized["items"] = cleaned_items
+    return normalized
 
 
 def clean_up_old_newsletters(now_ts: int | None = None) -> int:

@@ -49,6 +49,7 @@ def create(
     updated_date: int | None = None,
     enclosure_link: str | None = None,
     enclosure_mime: str | None = None,
+    media_description: str | None = None,
     media_thumbnail: str | None = None,
 ) -> database.Article:
     """Create a new article."""
@@ -69,6 +70,7 @@ def create(
         guid=guid,
         guid_hash=_hash(guid),
         last_modified=now(),
+        media_description=media_description,
         media_thumbnail=media_thumbnail,
         pub_date=pub_date or now(),
         rtl=False,

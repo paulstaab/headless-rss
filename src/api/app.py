@@ -1,5 +1,4 @@
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_utilities import repeat_every  # type: ignore
 
 from src import database, feed
+from src.options import Options
 
 from .nextcloud_news.app import router as nextcloud_router
 
@@ -52,7 +52,7 @@ def status():
     return {"status": "ok"}
 
 
-@repeat_every(seconds=int(os.getenv("FEED_UPDATE_FREQUENCY_MIN", 15)) * 60)
+@repeat_every(seconds=Options.get().feed_update_frequency_min * 60)
 async def update_feeds() -> None:
     """Update all feeds."""
     feed.update_all()

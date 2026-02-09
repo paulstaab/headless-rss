@@ -1,3 +1,4 @@
+import json
 from email.message import EmailMessage
 
 import pytest
@@ -68,6 +69,94 @@ def test_fetch_emails(mocker):
     assert feed2.title == "Another List"
     assert feed2.is_mailing_list is True
     assert len(article.get_by_feed(feed2.id)) == 1
+
+
+def test_llm_newsletter_parsing_creates_multiple_articles(mocker, monkeypatch):
+    """Ensure LLM parsing splits a newsletter into multiple articles."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
+
+    response_payload = {
+        "mode": "multi",
+        "items": [
+            {
+                "title": "Item One",
+                "url": "https://example.com/one",
+                "summary": "Summary one",
+            },
+            {
+                "title": "Item Two",
+                "url": "https://example.com/two",
+                "summary": "Summary two",
+            },
+        ],
+    }
+
+    mock_response = mocker.Mock()
+    mock_response.output_text = json.dumps(response_payload)
+
+    client_instance = mocker.Mock()
+    client_instance.responses.create.return_value = mock_response
+
+    mocker.patch("src.email.OpenAI", return_value=client_instance)
+
+    raw_email = (
+        b"Subject: Test Newsletter\n"
+        b"From: Example List <list@example.com>\n"
+        b"List-Unsubscribe: <mailto:unsubscribe@example.com>\n"
+        b"Content-Type: text/plain; charset=utf-8\n"
+        b"\n"
+        b"Content body"
+    )
+
+    email.process_email(raw_email)
+
+    feed_entry = feed.get_by_url("list@example.com")
+    items = article.get_by_feed(feed_entry.id)
+    assert len(items) == 2
+    urls = {item.url for item in items}
+    assert urls == {"https://example.com/one", "https://example.com/two"}
+    summaries = {item.media_description for item in items}
+    assert summaries == {"Summary one", "Summary two"}
+
+
+def test_llm_newsletter_parsing_creates_single_article(mocker, monkeypatch):
+    """Ensure LLM parsing keeps a newsletter as a single article when appropriate."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
+
+    response_payload = {
+        "mode": "single",
+        "summary": "Concise summary",
+        "content": "Cleaned content text",
+    }
+
+    mock_response = mocker.Mock()
+    mock_response.output_text = json.dumps(response_payload)
+
+    client_instance = mocker.Mock()
+    client_instance.responses.create.return_value = mock_response
+
+    mocker.patch("src.email.OpenAI", return_value=client_instance)
+
+    raw_email = (
+        b"Subject: Single Newsletter\n"
+        b"From: Example List <list@example.com>\n"
+        b"List-Unsubscribe: <mailto:unsubscribe@example.com>\n"
+        b"Content-Type: text/plain; charset=utf-8\n"
+        b"\n"
+        b"Original content body"
+    )
+
+    email.process_email(raw_email)
+
+    feed_entry = feed.get_by_url("list@example.com")
+    items = article.get_by_feed(feed_entry.id)
+    assert len(items) == 1
+    item = items[0]
+    assert item.url is None
+    assert item.content == "Cleaned content text"
+    assert item.media_description == "Concise summary"
 
 
 def test_clean_up_old_newsletters_removes_only_read_unstarred():

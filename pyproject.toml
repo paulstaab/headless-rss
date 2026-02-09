@@ -10,6 +10,8 @@ dependencies = [
     "fastapi>=0.115.7",
     "fastapi-utilities>=0.3.0",
     "feedparser>=6.0.11",
+    "httpx>=0.28.1",
+    "openai>=2.17.0",
     "sqlalchemy>=2.0.37",
     "uvicorn>=0.34.0",
 ]

@@ -251,12 +251,12 @@ def _create_article(new_article, feed_id: int) -> database.Article:
 
     try:
         updated_date = int(mktime(new_article["updated_parsed"]))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         updated_date = now()
 
     try:
         pub_date = int(mktime(new_article["published_parsed"]))
-    except (TypeError, ValueError, KeyError):
+    except TypeError, ValueError, KeyError:
         pub_date = updated_date
 
     # Extract media_thumbnail from feedparser if available
