@@ -66,7 +66,7 @@ def summarize_article_with_llm(article_text: str) -> str | None:
     if not _llm_enabled():
         return None
 
-    normalized_text = normalize_text(article_text)
+    normalized_text = strip_html(article_text)
     trimmed_text = _trim_article_text(normalized_text)
     if not trimmed_text:
         return None

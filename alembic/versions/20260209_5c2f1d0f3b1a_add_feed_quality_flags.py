@@ -1,7 +1,7 @@
 """Add feed quality flags
 
 Revision ID: 5c2f1d0f3b1a
-Revises: f0a4c607411b
+Revises: 3abc0ae31458
 Create Date: 2026-02-09 00:00:00.000000
 
 """
