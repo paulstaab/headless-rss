@@ -342,7 +342,7 @@ def _create_article(new_article, feed: database.Feed) -> database.Article:
     """Create a new article in the database.
 
     :param new_article: The article data to create.
-    :param feed_id: The ID of the feed to associate with the article.
+    :param feed: The Feed object to associate with the article.
     :returns: The created article.
     """
     feed_content: str | None = (
