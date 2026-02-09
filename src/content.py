@@ -143,7 +143,7 @@ def _call_openai_summary_api(article_text: str):
 
     payload = _build_openai_summary_payload(article_text)
     client = OpenAI(api_key=api_key, timeout=OPENAI_TIMEOUT_SECONDS)
-    return client.responses.create(**payload)
+    return client.chat.completions.create(**payload)
 
 
 def _call_openai_summary_quality_api(article_text: str, summary: str):
@@ -153,7 +153,7 @@ def _call_openai_summary_quality_api(article_text: str, summary: str):
 
     payload = _build_openai_summary_quality_payload(article_text, summary)
     client = OpenAI(api_key=api_key, timeout=OPENAI_TIMEOUT_SECONDS)
-    return client.responses.create(**payload)
+    return client.chat.completions.create(**payload)
 
 
 def _build_openai_summary_payload(article_text: str) -> dict:
@@ -178,9 +178,9 @@ def _build_openai_summary_payload(article_text: str) -> dict:
 
     return {
         "model": options.openai_model,
-        "input": [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+        "messages": [
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_schema", "json_schema": schema},
     }
@@ -209,9 +209,9 @@ def _build_openai_summary_quality_payload(article_text: str, summary: str) -> di
 
     return {
         "model": options.openai_model,
-        "input": [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+        "messages": [
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_schema", "json_schema": schema},
     }
@@ -221,14 +221,10 @@ def _extract_openai_response_text(response) -> str | None:
     if response is None:
         return None
 
-    if not getattr(response, "output", None):
-        return None
-
-    for output in response.output:
-        for content in getattr(output, "content", []) or []:
-            if getattr(content, "type", None) == "output_text":
-                text_value = getattr(content, "text", None)
-                if text_value:
-                    return text_value
+    choices = getattr(response, "choices", [])
+    if choices and len(choices) > 0:
+        message = getattr(choices[0], "message", None)
+        if message:
+            return getattr(message, "content", None)
 
     return None

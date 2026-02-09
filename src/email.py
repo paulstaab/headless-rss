@@ -464,7 +464,7 @@ def _call_openai_responses_api(subject: str, from_address: str, content: str):
 
     payload = _build_openai_payload(subject, from_address, content)
     client = OpenAI(api_key=api_key, timeout=OPENAI_TIMEOUT_SECONDS)
-    return client.responses.create(**payload)
+    return client.chat.completions.create(**payload)
 
 
 def _build_openai_payload(subject: str, from_address: str, content: str) -> dict:
@@ -508,9 +508,9 @@ def _build_openai_payload(subject: str, from_address: str, content: str) -> dict
 
     return {
         "model": options.openai_model,
-        "input": [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+        "messages": [
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": user_prompt},
         ],
         "response_format": {"type": "json_schema", "json_schema": schema},
     }
@@ -520,24 +520,12 @@ def _extract_openai_response_text(response) -> str | None:
     if response is None:
         return None
 
-    output_text = getattr(response, "output_text", None)
-    if output_text:
-        return output_text
+    choices = getattr(response, "choices", [])
+    if choices and len(choices) > 0:
+        message = getattr(choices[0], "message", None)
+        if message:
+            return getattr(message, "content", None)
 
-    if hasattr(response, "model_dump"):
-        response_json = response.model_dump()
-    elif isinstance(response, dict):
-        response_json = response
-    else:
-        return None
-
-    if "output_text" in response_json:
-        return response_json.get("output_text")
-
-    for output in response_json.get("output", []):
-        for part in output.get("content", []):
-            if part.get("type") in ("output_text", "text"):
-                return part.get("text")
     return None
 
 

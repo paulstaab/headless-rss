@@ -321,10 +321,13 @@ def update(feed_id: int, max_articles: int = 50) -> None:
                 feed_article_guid_hashes.append(db_article.guid_hash)
 
                 existing_article = db.query(database.Article).filter_by(guid_hash=db_article.guid_hash).first()
-                if not existing_article:
-                    db.add(db_article)
-                    db.commit()
-                    n_new_articles += 1
+                if existing_article:
+                    continue
+
+                db_article = _enrich_article(feed, db_article)
+                db.add(db_article)
+                db.commit()
+                n_new_articles += 1
 
             except Exception as e:
                 logger.error(f"Error adding article from feed {feed_id}: {e}")
@@ -373,33 +376,36 @@ def _create_article(new_article, feed: database.Feed) -> database.Article:
         if len(thumbnails) > 0:
             media_thumbnail = thumbnails[0].get("url")
 
-    content = feed_content
-    if feed.use_extracted_fulltext and url:
-        extracted_text = _safe_extract_article_text(url)
-        if extracted_text:
-            content = extracted_text
-
-    summary = feed_summary
-    if feed.use_llm_summary and Options.get().llm_enabled and content:
-        llm_summary = summarize_article_with_llm(content)
-        if llm_summary:
-            logger.info(f"Generated LLM summary of length {len(llm_summary)} for article GUID: {guid}")
-            summary = llm_summary
-
     return article.create(
         feed_id=feed.id,
         title=title,
         author=new_article.get("author"),
-        content=content,
+        content=feed_content,
         enclosure_link=new_article.get("enclosure_link"),
         enclosure_mime=new_article.get("enclosure_mime"),
         guid=guid,
         media_thumbnail=media_thumbnail,
-        media_description=summary,
+        media_description=feed_summary,
         pub_date=pub_date,
         updated_date=updated_date,
         url=url,
     )
+
+
+def _enrich_article(feed: database.Feed, db_article: database.Article) -> database.Article:
+    """Enrich the article with additional content extraction and LLM summary if enabled."""
+    if feed.use_extracted_fulltext and db_article.url:
+        extracted_text = _safe_extract_article_text(db_article.url)
+        if extracted_text:
+            db_article.content = extracted_text
+
+    if feed.use_llm_summary and Options.get().llm_enabled and db_article.content:
+        llm_summary = summarize_article_with_llm(db_article.content)
+        if llm_summary:
+            logger.info(f"Generated LLM summary of length {len(llm_summary)} for article GUID: {db_article.guid}")
+            db_article.media_description = llm_summary
+
+    return db_article
 
 
 def update_all() -> None:
