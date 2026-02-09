@@ -15,6 +15,15 @@ def db(tmp_path: Path):
         yield db
 
 
+@pytest.fixture(autouse=True, scope="session")
+def disable_openai_calls() -> None:
+    """Disable OpenAI API calls during tests."""
+    import os
+
+    os.environ.pop("OPENAI_API_KEY", None)
+    os.environ.pop("OPENAI_MODEL", None)
+
+
 @pytest.fixture(autouse=True)
 def clear_options_cache() -> None:
     """Reset the options so that each test can set its own environment variables."""
