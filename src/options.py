@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -62,3 +63,8 @@ class Options:
     @property
     def llm_enabled(self) -> bool:
         return bool(self.openai_api_key)
+
+    @property
+    def testing_mode(self) -> bool:
+        """Detect if we're running in testing mode."""
+        return "pytest" in sys.modules or any("test" in module for module in sys.modules)
