@@ -41,7 +41,7 @@ Base path: `/index.php/apps/news/api/v1-2`
 - **PUT `/items/unstar/multiple`** – Unstars multiple items. Body matches the star payload.
 - **PUT `/items/read`** – Marks all items up to `{ "newestItemId": int }` as read.
 
-#### Inofficial extension
+#### Unofficial extension
 - **GET `/items/{itemId}/content`** Get the full content of an article. `404` if missing.
 
 ### Version
