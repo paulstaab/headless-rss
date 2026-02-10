@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from src import article
+from src import article, database
 
 logger = logging.getLogger(__name__)
 
@@ -16,27 +16,26 @@ router = APIRouter(tags=["items"])
 
 
 class Article(BaseModel):
-    id: int
-    title: str | None
-    content: str | None
-    author: str | None
-    body: str | None
-    content_hash: str | None
-    enclosure_link: str | None
-    enclosure_mime: str | None
-    feed_id: int
-    fingerprint: str | None
-    guid: str
-    guid_hash: str
-    last_modified: int
-    media_description: str | None
-    media_thumbnail: str | None
-    pub_date: int | None
-    rtl: bool
-    starred: bool
-    unread: bool
-    updated_date: int | None
-    url: str | None
+    id: int  # Item ID
+    title: str | None  # Item title
+    author: str | None  # Author name
+    body: str | None  # Summary if available, otherwise full content
+    content_hash: str | None  # Hash of content for change detection
+    enclosure_link: str | None  # Enclosure URL
+    enclosure_mime: str | None  # Enclosure MIME type
+    feed_id: int  # Feed ID this item belongs to
+    fingerprint: str | None  # Fingerprint for de-duplication
+    guid: str  # Original item GUID
+    guid_hash: str  # Hash of the GUID
+    last_modified: int  # Last modified timestamp
+    media_description: str | None  # Media summary or description
+    media_thumbnail: str | None  # Media thumbnail URL
+    pub_date: int | None  # Published timestamp
+    rtl: bool  # Right-to-left content flag
+    starred: bool  # Starred flag
+    unread: bool  # Unread flag
+    updated_date: int | None  # Updated timestamp
+    url: str | None  # Item URL
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -45,8 +44,44 @@ class Article(BaseModel):
     )
 
 
+def _article_to_item(item: database.Article) -> Article:
+    body = item.summary if item.summary else item.content
+    return Article(
+        id=item.id,
+        title=item.title,
+        author=item.author,
+        body=body,
+        content_hash=item.content_hash,
+        enclosure_link=item.enclosure_link,
+        enclosure_mime=item.enclosure_mime,
+        feed_id=item.feed_id,
+        fingerprint=item.fingerprint,
+        guid=item.guid,
+        guid_hash=item.guid_hash,
+        last_modified=item.last_modified,
+        media_description=item.media_description,
+        media_thumbnail=item.media_thumbnail,
+        pub_date=item.pub_date,
+        rtl=item.rtl,
+        starred=item.starred,
+        unread=item.unread,
+        updated_date=item.updated_date,
+        url=item.url,
+    )
+
+
 class ItemGetOut(BaseModel):
     items: list[Article]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+
+
+class ItemContentOut(BaseModel):
+    content: str | None  # Full item content
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -122,7 +157,7 @@ def get_items(
     else:
         raise NotImplementedError(f"Article selection method {select_method} is not implemented")
 
-    return ItemGetOut(items=[Article.model_validate(item) for item in items])
+    return ItemGetOut(items=[_article_to_item(item) for item in items])
 
 
 @router.get("/updated", response_model=ItemGetOut)
@@ -151,7 +186,22 @@ def get_updated_items(
     else:
         raise NotImplementedError(f"Article selection method {select_method} is not implemented")
 
-    return ItemGetOut(items=[Article.model_validate(item) for item in items])
+    return ItemGetOut(items=[_article_to_item(item) for item in items])
+
+
+@router.get("/{item_id}/content", response_model=ItemContentOut)
+def get_item_content(item_id: int) -> ItemContentOut:
+    """Fetch the full content for a single item.
+
+    :param item_id: The item ID to fetch content for.
+    :returns: The full item content.
+    """
+    try:
+        item = article.get_by_id(item_id)
+    except article.NoArticleError as e:
+        raise HTTPException(status_code=404, detail="Item not found") from e
+
+    return ItemContentOut(content=item.content)
 
 
 @router.post("/{item_id}/read")

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from src import article, feed, folder
+from src import article, content, feed, folder
 from src.folder import NoFolderError
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ def add_feed(input: FeedPostIn):
         raise HTTPException(status_code=422, detail=str(e)) from e
     except feed.FeedParsingError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-    except feed.SSRFProtectionError as e:
+    except content.SSRFProtectionError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return {"feeds": get_feeds().feeds, "newestItemId": new_feed.id}

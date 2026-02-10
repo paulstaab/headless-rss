@@ -26,7 +26,7 @@ def test_feed_url_ssrf_vulnerability() -> None:
     This test verifies that dangerous URLs are blocked to prevent SSRF
     vulnerabilities.
     """
-    from src.feed import SSRFProtectionError, _validate_feed_url
+    from src.content import SSRFProtectionError, validate_url
 
     # Test dangerous URLs that should be blocked
     dangerous_urls = [
@@ -39,8 +39,8 @@ def test_feed_url_ssrf_vulnerability() -> None:
     for url in dangerous_urls:
         # This call should raise SSRFProtectionError when localhost is not allowed
         with pytest.raises(SSRFProtectionError):
-            _validate_feed_url(url, allow_localhost=False)
+            validate_url(url, allow_localhost=False)
 
     # Test that safe URLs don't raise exceptions
     safe_url = "https://example.com/feed.xml"
-    _validate_feed_url(safe_url, allow_localhost=False)  # Should not raise
+    validate_url(safe_url, allow_localhost=False)  # Should not raise
