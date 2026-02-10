@@ -11,12 +11,9 @@ import feedparser
 from src import article, database, email
 from src.content import (
     extract_article,
-    is_summary_good_with_llm,
     normalize_text,
-    summarize_article_with_llm,
 )
 from src.folder import NoFolderError
-from src.options import Options
 
 logger = logging.getLogger(__name__)
 
@@ -148,19 +145,6 @@ def now() -> int:
     return int(time.time())
 
 
-def _safe_extract_article_text(url: str | None) -> str | None:
-    if not url:
-        return None
-    try:
-        _validate_feed_url(url)
-    except SSRFProtectionError as exc:
-        logger.warning(f"Blocked article url for extraction: {exc}")
-        return None
-    extracted_text = extract_article(url)
-    logger.info(f"Extracted text of length {len(extracted_text) if extracted_text else 0} from article URL: {url}")
-    return extracted_text
-
-
 def _needs_quality_check(feed: database.Feed) -> bool:
     if feed.last_quality_check is None:
         return True
@@ -172,26 +156,6 @@ def _select_quality_sample(entries) -> dict | None:
         if entry.get("link") and (entry.get("summary") or entry.get("content")):
             return entry
     return None
-
-
-def _check_summary_quality(article_text: str, summary: str | None) -> bool:
-    if not summary:
-        return True
-
-    normalized_summary = normalize_text(summary)
-    normalized_article = normalize_text(article_text)
-    half_length = len(normalized_summary) // 2
-    if half_length > 0 and normalized_article.startswith(normalized_summary[:half_length]):
-        return True
-
-    if Options.get().llm_enabled:
-        # Check LLM enabled again to be safe, though called only if enabled usually
-        is_good = is_summary_good_with_llm(article_text, summary)
-        if is_good is None:
-            return False
-        return is_good
-    else:
-        return False
 
 
 def _check_fulltext_quality(
@@ -225,15 +189,12 @@ def _maybe_check_feed_quality(db: database.Session, feed: database.Feed, entries
 
     feed_content_list = sample.get("content")
     feed_content = feed_content_list[0]["value"] if feed_content_list else sample.get("summary")
-    feed_summary = sample.get("summary")
     article_url = sample.get("link")
 
-    extracted_text = _safe_extract_article_text(article_url)
-    article_text = extracted_text or feed_content or ""
+    extracted_text = extract_article(article_url) if article_url else None
 
     feed.use_extracted_fulltext = _check_fulltext_quality(extracted_text, feed_content)
-    summary_is_good = _check_summary_quality(article_text, feed_summary)
-    feed.use_llm_summary = not summary_is_good
+    feed.use_llm_summary = feed.use_extracted_fulltext  # for now, only use LLM summary if fulltext can be downloaded
     feed.last_quality_check = now()
     db.commit()
     logger.info(
@@ -324,7 +285,11 @@ def update(feed_id: int, max_articles: int = 50) -> None:
                 if existing_article:
                     continue
 
-                db_article = _enrich_article(feed, db_article)
+                db_article = article.enrich(
+                    article=db_article,
+                    download_fulltext=feed.use_extracted_fulltext,
+                    add_llm_summary=feed.use_llm_summary,
+                )
                 db.add(db_article)
                 db.commit()
                 n_new_articles += 1
@@ -381,31 +346,15 @@ def _create_article(new_article, feed: database.Feed) -> database.Article:
         title=title,
         author=new_article.get("author"),
         content=feed_content,
+        summary=feed_summary,
         enclosure_link=new_article.get("enclosure_link"),
         enclosure_mime=new_article.get("enclosure_mime"),
         guid=guid,
         media_thumbnail=media_thumbnail,
-        media_description=feed_summary,
         pub_date=pub_date,
         updated_date=updated_date,
         url=url,
     )
-
-
-def _enrich_article(feed: database.Feed, db_article: database.Article) -> database.Article:
-    """Enrich the article with additional content extraction and LLM summary if enabled."""
-    if feed.use_extracted_fulltext and db_article.url:
-        extracted_text = _safe_extract_article_text(db_article.url)
-        if extracted_text:
-            db_article.content = extracted_text
-
-    if feed.use_llm_summary and Options.get().llm_enabled and db_article.content:
-        llm_summary = summarize_article_with_llm(db_article.content)
-        if llm_summary:
-            logger.info(f"Generated LLM summary of length {len(llm_summary)} for article GUID: {db_article.guid}")
-            db_article.media_description = llm_summary
-
-    return db_article
 
 
 def update_all() -> None:

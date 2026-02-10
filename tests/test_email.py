@@ -120,7 +120,7 @@ def test_llm_newsletter_parsing_creates_multiple_articles(mocker, monkeypatch):
     assert len(items) == 2
     urls = {item.url for item in items}
     assert urls == {"https://example.com/one", "https://example.com/two"}
-    summaries = {item.media_description for item in items}
+    summaries = {item.summary for item in items}
     assert summaries == {"Summary one", "Summary two"}
 
 
@@ -164,7 +164,7 @@ def test_llm_newsletter_parsing_creates_single_article(mocker, monkeypatch):
     item = items[0]
     assert item.url is None
     assert item.content == "Cleaned content text"
-    assert item.media_description == "Concise summary"
+    assert item.summary == "Concise summary"
 
 
 def test_clean_up_old_newsletters_removes_only_read_unstarred():

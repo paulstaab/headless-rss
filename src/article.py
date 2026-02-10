@@ -1,8 +1,18 @@
+import logging
 import re
 import time
 from hashlib import md5
 
 from src import database
+from src.content import (
+    extract_article,
+    summarize_article_with_llm,
+)
+from src.options import Options
+
+logger = logging.getLogger(__name__)
+
+LLM_SUMMARY_MIN_CHARS = 160
 
 
 class NoArticleError(Exception):
@@ -45,6 +55,7 @@ def create(
     url: str | None,
     content: str | None,
     guid: str,
+    summary: str | None = None,
     pub_date: int | None = None,
     updated_date: int | None = None,
     enclosure_link: str | None = None,
@@ -53,14 +64,10 @@ def create(
     media_thumbnail: str | None = None,
 ) -> database.Article:
     """Create a new article."""
-    # Use provided media_thumbnail or fall back to first image in content
-    if not media_thumbnail:
-        media_thumbnail = extract_first_image_url(content)
-
     return database.Article(
         title=title,
         author=author,
-        body=content,
+        summary=summary,
         content=content,
         content_hash=_hash(content) if content else None,
         enclosure_link=enclosure_link,
@@ -199,6 +206,16 @@ def get_by_guid_hash(feedId: int, guidHash: str) -> database.Article:  # noqa: N
     return item
 
 
+def get_by_id(item_id: int) -> database.Article:
+    """Fetch an item by its ID."""
+    with database.get_session() as db:
+        item = db.query(database.Article).filter(database.Article.id == item_id).first()
+        if not item:
+            raise NoArticleError(f"No article with id {item_id} found")
+
+    return item
+
+
 def _filter_article_query(
     query,
     max_results: int = 0,
@@ -278,3 +295,34 @@ def mark_all_as_read(newest_item_id: int) -> int:
             item.last_modified = int(time.time())
         db.commit()
         return len(items)
+
+
+def enrich(article: database.Article, download_fulltext: bool, add_llm_summary: bool) -> database.Article:
+    """Enrich the article with additional content extraction and LLM summary if enabled."""
+    # Use provided media_thumbnail or fall back to first image in content
+    if not article.media_thumbnail:
+        article.media_thumbnail = extract_first_image_url(article.content)
+
+    # Download full text if enabled and URL is available
+    if download_fulltext and article.url:
+        extracted_text = extract_article(article.url)
+        if extracted_text:
+            logger.info(f"Article {article.id}: Extracted full text of length {len(extracted_text)}")
+            article.content = extracted_text
+            article.content_hash = _hash(extracted_text)
+
+    # Generate summary if not already present
+    if article.content and not article.summary:
+        if len(article.content) < LLM_SUMMARY_MIN_CHARS:
+            article.summary = article.content
+
+        elif add_llm_summary and Options.get().llm_enabled:
+            llm_summary = summarize_article_with_llm(article.content)
+            if llm_summary:
+                logger.info(f"Article {article.id}: Generated LLM summary of length {len(llm_summary)}")
+                article.summary = llm_summary
+
+        else:
+            article.summary = article.content[:LLM_SUMMARY_MIN_CHARS] + "..."
+
+    return article

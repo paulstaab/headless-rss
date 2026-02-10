@@ -82,6 +82,7 @@ class TestArticleCreationWithMediaThumbnail:
             author="Test Author",
             url="https://example.com/article",
             content=content,
+            summary=None,
             guid="test-guid-1",
             media_thumbnail="https://example.com/explicit-thumbnail.jpg",
         )
@@ -98,6 +99,7 @@ class TestArticleCreationWithMediaThumbnail:
             content=content,
             guid="test-guid-2",
         )
+        new_article = article.enrich(new_article, download_fulltext=False, add_llm_summary=False)
         assert new_article.media_thumbnail == "https://example.com/content-image.jpg"
 
     def test_media_thumbnail_is_none_when_no_images(self):
@@ -109,6 +111,7 @@ class TestArticleCreationWithMediaThumbnail:
             author="Test Author",
             url="https://example.com/article",
             content=content,
+            summary=None,
             guid="test-guid-3",
         )
         assert new_article.media_thumbnail is None
@@ -121,6 +124,7 @@ class TestArticleCreationWithMediaThumbnail:
             author="Test Author",
             url="https://example.com/article",
             content=None,
+            summary=None,
             guid="test-guid-4",
         )
         assert new_article.media_thumbnail is None

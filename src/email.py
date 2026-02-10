@@ -374,10 +374,12 @@ def _create_article_from_email(
         title=subject,
         author=from_address,
         content=content,
+        summary=summary,
         guid=guid,
         url=url,
-        media_description=summary,
     )
+
+    new_article = article.enrich(new_article, download_fulltext=True, add_llm_summary=True)
 
     return new_article
 

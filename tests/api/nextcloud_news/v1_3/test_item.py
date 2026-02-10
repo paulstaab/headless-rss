@@ -64,6 +64,33 @@ def test_get_updated_items(client: TestClient, feed_server) -> None:
     assert len(items) == 1
 
 
+def test_get_item_content(client: TestClient, feed_server) -> None:
+    # given
+    response = client.post(
+        "/feeds",
+        json={
+            "url": feed_server.url_for("/atom.xml"),
+            "folderId": None,
+        },
+    )
+    item_id = response.json()["newestItemId"]
+
+    # when
+    response = client.get(f"/items/{item_id}/content")
+
+    # then
+    assert response.status_code == 200
+    payload = response.json()
+    assert "content" in payload
+    assert payload["content"]
+
+
+def test_get_item_content_missing(client: TestClient) -> None:
+    response = client.get("/items/999999/content")
+
+    assert response.status_code == 404
+
+
 def test_mark_item_as_read(client: TestClient, feed_server) -> None:
     # given
     response = client.post(

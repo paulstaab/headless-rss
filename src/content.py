@@ -96,38 +96,6 @@ def summarize_article_with_llm(article_text: str) -> str | None:
     return summary + " (AI generated)"
 
 
-def is_summary_good_with_llm(article_text: str, summary: str) -> bool | None:
-    if not _llm_enabled():
-        return None
-
-    normalized_text = normalize_text(article_text)
-    trimmed_text = _trim_article_text(normalized_text)
-    trimmed_summary = (summary or "").strip()
-    if not trimmed_text or not trimmed_summary:
-        return None
-
-    try:
-        response_obj = _call_openai_summary_quality_api(trimmed_text, trimmed_summary)
-    except Exception as exc:
-        logger.warning(f"LLM summary quality check failed: {exc}")
-        return None
-
-    response_text = _extract_openai_response_text(response_obj)
-    if not response_text:
-        return None
-
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        logger.warning("LLM summary quality response was not valid JSON")
-        return None
-
-    if "is_good" not in parsed:
-        return None
-
-    return bool(parsed.get("is_good"))
-
-
 def _llm_enabled() -> bool:
     return Options.get().llm_enabled
 
