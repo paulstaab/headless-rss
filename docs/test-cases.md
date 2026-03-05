@@ -94,14 +94,6 @@ Source: `tests/test_email.py`
 | TC-EMAIL-005 | Remove only stale read/unstarred newsletter items | Dataset includes old/new, read/unread, starred/unstarred, and non-newsletter items. | Only old read unstarred newsletter items are deleted. |
 | TC-EMAIL-006 | Run cleanup even without credentials | No mailbox credentials configured. | Cleanup function is still invoked exactly once. |
 
-## Expected-Failure Cases (Known Gaps)
-Source: `tests/test_email.py`
-
-| ID | Case | Description | Current Status |
-|---|---|---|---|
-| TC-XFAIL-001 | Subject sanitization hardening | Validate sanitization of malicious email subjects (XSS/SQL/template/control chars). | Marked `xfail` (not fully implemented). |
-| TC-XFAIL-002 | Error detail redaction | Ensure mailbox connection errors do not expose internal host/port/username details. | Marked `xfail` (not fully implemented). |
-
 ## Current Automation Gaps
 - No dedicated automated tests currently target CLI command invocation directly.
 - CLI behavior is validated via required manual validation steps in repository workflow.
