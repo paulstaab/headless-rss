@@ -103,3 +103,24 @@ Test cases are specified in separate documents:
 - Database entities shall include `Feed`, `Folder`, `Article`, and `EmailCredential`.
 - Feed URLs shall be unique.
 - Folder names shall be unique.
+
+## Rust Reimplementation Progress
+- A Rust implementation workspace exists under `rust/` using `axum`, `tokio`, and `sqlx` with SQLite.
+- The Rust server shall expose:
+  - `/status`
+  - `/index.php/apps/news/api/v1-2/version`
+  - `/index.php/apps/news/api/v1-3/version`
+  - `/index.php/apps/news/api/v1-2/feeds` (read-only)
+  - `/index.php/apps/news/api/v1-3/feeds` (read-only)
+  - `/index.php/apps/news/api/v1-2/folders` (read-only)
+  - `/index.php/apps/news/api/v1-3/folders` (read-only)
+  - `/index.php/apps/news/api/v1-2/items` (read-only)
+  - `/index.php/apps/news/api/v1-3/items` (read-only)
+  - `/index.php/apps/news/api/v1-2/items/updated` (read-only)
+  - `/index.php/apps/news/api/v1-3/items/updated` (read-only)
+  - `/index.php/apps/news/api/v1-2/items/{item_id}/content` (read-only)
+  - `/index.php/apps/news/api/v1-3/items/{item_id}/content` (read-only)
+- Rust feed responses shall preserve camelCase fields and map root folder IDs to `folderId: null`.
+- Rust folder responses shall omit the internal root folder.
+- Rust auth behavior shall match current API behavior for protected endpoints when `USERNAME` and `PASSWORD` are both set.
+- Rust default database path handling shall support running from repository root and from `rust/`.

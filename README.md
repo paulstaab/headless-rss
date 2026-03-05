@@ -67,6 +67,11 @@ Replace the placeholders with your actual email server details.
 - Please submit an issue for feature requests before creating a pull-request.
   I want to keep this project as small as possible.
 
+## Rust Reimplementation
+
+An in-progress Rust reimplementation is available under `rust/`.
+Current status and run instructions are documented in `rust/README.md`.
+
 
 ## License
 

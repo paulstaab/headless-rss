@@ -102,3 +102,15 @@ Source: `tests/test_email.py`
 - Unit and API tests under `tests/`.
 - Shared fixtures under `tests/fixtures/`.
 - API-specific test-case details in the API test-case documents listed above.
+
+## Rust Bootstrap Test Cases
+Source: `rust/src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-001 | Rust health endpoint | Call Rust `/status`. | Returns `200` with `{"status":"ok"}`. |
+| TC-RUST-002 | Root folder feed mapping | Query Rust feeds endpoint with feed assigned to root folder. | Feed object returns `folderId: null`. |
+| TC-RUST-003 | Conditional auth enforcement | Query protected Rust endpoint when auth env vars are set and no credentials are provided. | Returns `401` with `{"detail":"Not authenticated"}` and Basic auth challenge header. |
+| TC-RUST-004 | Rust items read endpoint | Query Rust `/items` with feed selection parameters. | Returns `200` with `items` payload and `body` preferring summary over content. |
+| TC-RUST-005 | Rust updated-items filtering | Query Rust `/items/updated` with `lastModified` filter. | Returns `200` and only items meeting `lastModified` criteria. |
+| TC-RUST-006 | Rust item content missing | Query Rust `/items/{item_id}/content` for a missing item ID. | Returns `404` with `{"detail":"Item not found"}`. |

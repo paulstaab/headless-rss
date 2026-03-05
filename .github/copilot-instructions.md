@@ -19,11 +19,7 @@ Always reference these instructions first and fallback to search or bash command
 ## Validation
 
 ### Required Manual Validation After Changes
-- ALWAYS run the full build and test sequence after making changes.
-- Run the `Execute Migrations` task to execute all database migrations -- takes <10 seconds
-- Run the `Lint` task to run all linters and formatters -- takes 10 seconds on first run, <1 second after that.
-- Run the `Run All Tests` task to run the test suite -- takes 10 seconds. NEVER CANCEL. Set timeout to 2 minutes.
-- Test CLI functionality: `uv run --dev python -m src.cli --help` and `uv run --dev python -m src.cli update`
+- to be added again after Rust re-implementation is completed
 
 ### Complete End-to-End Scenario Testing
 After making changes, test a complete RSS feed workflow:

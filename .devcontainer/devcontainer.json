@@ -6,13 +6,15 @@
 	"image": "mcr.microsoft.com/devcontainers/python:3",
 	"features": {
 		"ghcr.io/va-h/devcontainers-features/uv:1": {},
-		"ghcr.io/rails/devcontainer/features/sqlite3:latest": {}
+		"ghcr.io/rails/devcontainer/features/sqlite3:latest": {},
+		"ghcr.io/devcontainers/features/rust:1": {}
 	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"alexcvzz.vscode-sqlite",
-				"charliermarsh.ruff"
+				"charliermarsh.ruff",
+				"rust-lang.rust-analyzer"
 			]
 		}
 	},
