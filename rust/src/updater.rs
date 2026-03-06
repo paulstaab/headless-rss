@@ -1,0 +1,345 @@
+use std::net::IpAddr;
+use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context, Result};
+use feed_rs::model::Entry;
+use sqlx::{FromRow, SqlitePool};
+use tokio::net::lookup_host;
+
+use crate::config::Config;
+use crate::db;
+
+#[derive(FromRow)]
+struct FeedToUpdate {
+    id: i64,
+    url: String,
+}
+
+pub async fn update_all(config: &Config) -> Result<()> {
+    let pool = db::create_pool(&config.db_path)
+        .await
+        .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
+    let updated = update_due_feeds(&pool, config.testing_mode).await?;
+    tracing::info!(updated, "finished rust feed update cycle");
+    Ok(())
+}
+
+pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<usize> {
+    let now_ts = unix_now();
+    let feeds: Vec<FeedToUpdate> = sqlx::query_as(
+        "SELECT id, url FROM feed WHERE next_update_time IS NULL OR next_update_time <= ?",
+    )
+    .bind(now_ts)
+    .fetch_all(pool)
+    .await
+    .context("failed to query due feeds")?;
+
+    for feed in &feeds {
+        if let Err(err) = update_single_feed(pool, feed.id, &feed.url, testing_mode).await {
+            let detail = err.to_string();
+            tracing::warn!(feed_id = feed.id, error = %detail, "feed update failed");
+            sqlx::query(
+                "UPDATE feed SET update_error_count = update_error_count + 1, last_update_error = ? WHERE id = ?",
+            )
+            .bind(detail)
+            .bind(feed.id)
+            .execute(pool)
+            .await
+            .context("failed to persist feed update error")?;
+        }
+    }
+
+    Ok(feeds.len())
+}
+
+async fn update_single_feed(
+    pool: &SqlitePool,
+    feed_id: i64,
+    url: &str,
+    testing_mode: bool,
+) -> Result<()> {
+    validate_remote_url(url, testing_mode).await?;
+
+    let response = reqwest::get(url)
+        .await
+        .with_context(|| format!("request failed for {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!("request failed for {url}: HTTP {}", response.status());
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read response body")?;
+    let parsed = feed_rs::parser::parse(&bytes[..]).context("failed to parse feed")?;
+
+    let mut inserted = 0usize;
+    for entry in parsed.entries.iter().take(50) {
+        if insert_article_from_entry(pool, feed_id, entry).await? {
+            inserted += 1;
+        }
+    }
+
+    let now_ts = unix_now();
+    sqlx::query(
+        "UPDATE feed SET update_error_count = 0, last_update_error = NULL, next_update_time = ? WHERE id = ?",
+    )
+    .bind(now_ts + 86_400)
+    .bind(feed_id)
+    .execute(pool)
+    .await
+    .context("failed to update feed metadata")?;
+
+    tracing::info!(feed_id, inserted, "feed update completed");
+    Ok(())
+}
+
+async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entry) -> Result<bool> {
+    let guid = if entry.id.is_empty() {
+        entry
+            .links
+            .first()
+            .map(|l| l.href.clone())
+            .or_else(|| entry.title.as_ref().map(|t| t.content.clone()))
+    } else {
+        Some(entry.id.clone())
+    };
+
+    let Some(guid) = guid else {
+        return Ok(false);
+    };
+
+    let guid_hash = format!("{:x}", md5::compute(guid.as_bytes()));
+    let existing: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
+            .bind(&guid_hash)
+            .fetch_optional(pool)
+            .await
+            .context("failed to check existing article")?;
+
+    if existing.is_some() {
+        return Ok(false);
+    }
+
+    let content = entry
+        .content
+        .as_ref()
+        .and_then(|content| content.body.clone());
+    let summary = entry.summary.as_ref().map(|s| s.content.clone());
+    let content_hash = content
+        .as_ref()
+        .map(|value| format!("{:x}", md5::compute(value.as_bytes())));
+    let title = entry.title.as_ref().map(|t| t.content.clone());
+    let url = entry.links.first().map(|l| l.href.clone());
+    let author = entry.authors.first().map(|a| a.name.clone());
+    let now_ts = unix_now();
+    let updated = entry.updated.map(|dt| dt.timestamp()).unwrap_or(now_ts);
+    let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
+
+    sqlx::query(
+        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0, 0, 1, ?, ?, ?)",
+    )
+    .bind(title)
+    .bind(content)
+    .bind(author)
+    .bind(content_hash)
+    .bind(feed_id)
+    .bind(guid)
+    .bind(guid_hash)
+    .bind(now_ts)
+    .bind(published)
+    .bind(updated)
+    .bind(url)
+    .bind(summary)
+    .execute(pool)
+    .await
+    .context("failed to insert article")?;
+
+    Ok(true)
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<()> {
+    let parsed = reqwest::Url::parse(url).context("invalid url")?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        anyhow::bail!(
+            "URL scheme '{}' is not allowed. Only http and https are permitted.",
+            parsed.scheme()
+        );
+    }
+
+    let Some(hostname) = parsed.host_str() else {
+        anyhow::bail!("URL must have a valid hostname.");
+    };
+
+    if !allow_localhost && matches!(hostname, "localhost" | "127.0.0.1" | "::1") {
+        anyhow::bail!("Access to localhost is not allowed.");
+    }
+
+    if let Ok(ip) = IpAddr::from_str(hostname) {
+        validate_ip_address(ip, allow_localhost)?;
+    }
+
+    let lookup_port = parsed.port_or_known_default().unwrap_or(80);
+    if let Ok(addrs) = lookup_host((hostname, lookup_port)).await {
+        for addr in addrs {
+            validate_ip_address(addr.ip(), allow_localhost)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_ip_address(ip: IpAddr, allow_localhost: bool) -> Result<()> {
+    let is_private = match ip {
+        IpAddr::V4(v4) => v4.is_private(),
+        IpAddr::V6(v6) => v6.is_unique_local(),
+    };
+    let is_link_local = match ip {
+        IpAddr::V4(v4) => v4.is_link_local(),
+        IpAddr::V6(v6) => v6.is_unicast_link_local(),
+    };
+
+    if !allow_localhost && ip.is_loopback() {
+        anyhow::bail!("Access to loopback address {ip} is not allowed.");
+    }
+    if is_private && !ip.is_loopback() {
+        anyhow::bail!("Access to private address {ip} is not allowed.");
+    }
+    if is_link_local {
+        anyhow::bail!("Access to link-local address {ip} is not allowed.");
+    }
+    if ip.is_unspecified() {
+        anyhow::bail!("Access to unspecified address {ip} is not allowed.");
+    }
+    if ip.is_multicast() {
+        anyhow::bail!("Access to multicast address {ip} is not allowed.");
+    }
+    if ip == IpAddr::from([169, 254, 169, 254]) {
+        anyhow::bail!("Access to cloud metadata service is not allowed.");
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::Router;
+    use axum::http::header as http_header;
+    use axum::routing::get;
+    use sqlx::SqlitePool;
+    use tokio::net::TcpListener;
+
+    use super::update_due_feeds;
+
+    async fn setup_pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE article (id INTEGER PRIMARY KEY NOT NULL, title VARCHAR, content VARCHAR, author VARCHAR, content_hash VARCHAR, enclosure_link VARCHAR, enclosure_mime VARCHAR, feed_id INTEGER NOT NULL, fingerprint VARCHAR, guid VARCHAR NOT NULL, guid_hash VARCHAR NOT NULL, last_modified INTEGER NOT NULL, media_description VARCHAR, media_thumbnail VARCHAR, pub_date INTEGER, rtl BOOLEAN NOT NULL, starred BOOLEAN NOT NULL, unread BOOLEAN NOT NULL, updated_date INTEGER, url VARCHAR, summary VARCHAR)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    async fn start_fixture_feed_server() -> String {
+        let app = Router::new().route(
+            "/atom.xml",
+            get(|| async {
+                (
+                    [(http_header::CONTENT_TYPE, "application/atom+xml")],
+                    r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Updater Fixture</title>
+  <link href="http://example.org/" />
+  <updated>2026-03-06T00:00:00Z</updated>
+  <id>tag:example.org,2026:feed</id>
+  <entry>
+    <title>Update Entry</title>
+    <link href="http://example.org/update-entry" />
+    <id>tag:example.org,2026:update-entry</id>
+    <updated>2026-03-06T00:00:00Z</updated>
+    <summary>Update summary</summary>
+  </entry>
+</feed>"#,
+                )
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/atom.xml")
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_inserts_new_articles() {
+        let pool = setup_pool().await;
+        let url = start_fixture_feed_server().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (1, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let article_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM article WHERE feed_id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(article_count, 1);
+
+        let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(err_count, 0);
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_persists_errors() {
+        let pool = setup_pool().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (2, 'file:///etc/passwd', 'Bad', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, false).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 2")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let err_detail: Option<String> =
+            sqlx::query_scalar("SELECT last_update_error FROM feed WHERE id = 2")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(err_count, 1);
+        assert!(
+            err_detail
+                .unwrap_or_default()
+                .contains("Only http and https are permitted")
+        );
+    }
+}

@@ -7,6 +7,8 @@ pub struct Config {
     pub password: Option<String>,
     pub version: String,
     pub db_path: String,
+    pub feed_update_frequency_min: i64,
+    pub testing_mode: bool,
 }
 
 impl Config {
@@ -18,12 +20,25 @@ impl Config {
             password: get_env_str("PASSWORD"),
             version: env::var("VERSION").unwrap_or_else(|_| "dev".to_string()),
             db_path,
+            feed_update_frequency_min: get_env_int("FEED_UPDATE_FREQUENCY_MIN", 15),
+            testing_mode: env::var("TESTING_MODE")
+                .ok()
+                .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+                .unwrap_or(cfg!(test)),
         }
     }
 
     pub fn auth_enabled(&self) -> bool {
         self.username.is_some() && self.password.is_some()
     }
+}
+
+fn get_env_int(name: &str, default: i64) -> i64 {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
 }
 
 fn get_env_str(name: &str) -> Option<String> {

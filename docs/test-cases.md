@@ -114,3 +114,42 @@ Source: `rust/src/api.rs`
 | TC-RUST-004 | Rust items read endpoint | Query Rust `/items` with feed selection parameters. | Returns `200` with `items` payload and `body` preferring summary over content. |
 | TC-RUST-005 | Rust updated-items filtering | Query Rust `/items/updated` with `lastModified` filter. | Returns `200` and only items meeting `lastModified` criteria. |
 | TC-RUST-006 | Rust item content missing | Query Rust `/items/{item_id}/content` for a missing item ID. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-007 | v1-2 star by guid-hash route | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star` for an existing item. | Returns `200` and updates item to starred. |
+| TC-RUST-008 | v1-3 read-multiple payload shape | Call `POST /index.php/apps/news/api/v1-3/items/read/multiple` with `{"itemIds": [...]}`. | Returns `200` and marks targeted items as read. |
+| TC-RUST-009 | Rust folder creation endpoint | Call `POST /index.php/apps/news/api/v1-3/folders` with a valid non-empty name. | Returns `200` with created folder in `folders` payload. |
+| TC-RUST-010 | v1-2 feed move method contract | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/move` with `{"folderId": ...}`. | Returns `200` and updates feed folder assignment. |
+| TC-RUST-011 | v1-3 feed read method contract | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` with `{"newestItemId": ...}`. | Returns `200` and marks matching feed items as read. |
+| TC-RUST-012 | Rust feed creation SSRF localhost block | Call `POST /index.php/apps/news/api/v1-3/feeds` with URL `http://127.0.0.1:...` when testing mode is disabled. | Returns `400` with SSRF protection error detail. |
+| TC-RUST-013 | Rust folder duplicate-create conflict | Call `POST /index.php/apps/news/api/v1-3/folders` for an existing folder name. | Returns `409` with `{"detail":"Folder already exists"}`. |
+| TC-RUST-014 | Rust folder delete missing | Call `DELETE /index.php/apps/news/api/v1-3/folders/{folder_id}` for a missing folder ID. | Returns `404` with `{"detail":"Folder not found"}`. |
+| TC-RUST-015 | Rust feed duplicate-create conflict | Call `POST /index.php/apps/news/api/v1-3/feeds` for an already existing feed URL. | Returns `409` conflict. |
+| TC-RUST-016 | Rust feed create invalid folder | Call `POST /index.php/apps/news/api/v1-3/feeds` with a non-existent `folderId`. | Returns `422` with `Folder with ID ... does not exist`. |
+| TC-RUST-017 | Rust feed delete missing | Call `DELETE /index.php/apps/news/api/v1-3/feeds/{feed_id}` for a missing feed ID. | Returns `404` not found. |
+| TC-RUST-018 | Rust feed move invalid folder | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/move` with non-existent `folderId`. | Returns `422` with `Folder with ID ... does not exist`. |
+| TC-RUST-019 | Rust feed create payload parity | Call `POST /index.php/apps/news/api/v1-3/feeds` against a valid fixture Atom feed with `folderId=0`. | Returns `200` and payload includes expected feed fields (`url`, `title`, `link`, `updateErrorCount`) and `newestItemId` matching created feed ID. |
+| TC-RUST-020 | Rust folder read side effect | Seed a feed/article in a non-root folder and call `POST /index.php/apps/news/api/v1-3/folders/{folder_id}/read`. | Returns `200` and matching folder items are marked `unread=false`. |
+| TC-RUST-021 | v1-2 feed rename success path | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` with `{"feedTitle": ...}`. | Returns `200` and updates feed title in storage. |
+| TC-RUST-022 | v1-3 feed rename success path | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/rename` with `{"feedTitle": ...}`. | Returns `200` and updates feed title in storage. |
+| TC-RUST-023 | v1-2 feed rename method mismatch | Call `POST /index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` (wrong method). | Returns `405` method not allowed. |
+| TC-RUST-024 | v1-3 feed rename method mismatch | Call `PUT /index.php/apps/news/api/v1-3/feeds/{feed_id}/rename` (wrong method). | Returns `405` method not allowed. |
+| TC-RUST-025 | v1-2 feed read success path | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/read` with `{"newestItemId": ...}`. | Returns `200` and marks matching feed items as read. |
+| TC-RUST-026 | v1-3 feed read method mismatch | Call `PUT /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` (wrong method). | Returns `405` method not allowed. |
+| TC-RUST-027 | Rust feed delete cascade | Call `DELETE /index.php/apps/news/api/v1-3/feeds/{feed_id}` for an existing feed with items. | Returns `200`, deletes feed, and deletes associated articles. |
+| TC-RUST-028 | Rust folder delete cascade | Call `DELETE /index.php/apps/news/api/v1-3/folders/{folder_id}` for a folder containing feeds/items. | Returns `200`, deletes folder, deletes feeds in folder, and deletes their articles. |
+| TC-RUST-029 | Rust updater inserts new entries | Seed a due feed row and run Rust updater cycle against a valid fixture feed URL. | Due feed is processed, new article rows are inserted, and update error count remains `0`. |
+| TC-RUST-030 | Rust updater persists update errors | Seed a due feed row with an invalid/blocked URL and run Rust updater cycle. | Feed `update_error_count` increments and `last_update_error` is populated. |
+| TC-RUST-031 | Rust add-email-credentials success persistence | Run add-email-credentials persistence flow with validator success. | Credentials row is inserted into `email_credentials`. |
+| TC-RUST-032 | Rust add-email-credentials validation gate | Run add-email-credentials persistence flow with validator failure. | Command path fails and no credential row is persisted. |
+| TC-RUST-033 | Rust folder create invalid-name validation | Call `POST /index.php/apps/news/api/v1-3/folders` with an empty name. | Returns `422` with `{"detail":"Folder name is invalid"}`. |
+| TC-RUST-034 | Rust folder rename duplicate-name validation | Seed two folders and call `PUT /index.php/apps/news/api/v1-3/folders/{folder_id}` with an existing name. | Returns `409` with `{"detail":"Folder already exists"}`. |
+| TC-RUST-035 | Rust folder rename invalid-name validation | Call `PUT /index.php/apps/news/api/v1-3/folders/{folder_id}` with an empty name. | Returns `422` with `{"detail":"Folder name is invalid"}`. |
+| TC-RUST-036 | Rust feed create unreadable-source handling | Call `POST /index.php/apps/news/api/v1-3/feeds` with a URL returning non-success HTTP status. | Returns `422` parse/read failure response. |
+| TC-RUST-037 | Rust feed create next-update field | Call `POST /index.php/apps/news/api/v1-3/feeds` for a valid fixture feed and inspect payload. | Feed payload contains non-null `nextUpdateTime`. |
+| TC-RUST-038 | Rust v1-2 rename missing-feed detail | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` with non-existent feed ID. | Returns `404` with `Feed {id} not found`. |
+| TC-RUST-039 | Rust v1-3 read missing-feed detail | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` with non-existent feed ID. | Returns `404` with `Feed {id} not found`. |
+| TC-RUST-040 | Rust protected endpoint rejects invalid credentials | Call protected endpoint with wrong Basic credentials. | Returns `401` with `{"detail":"Invalid authentication credentials"}`. |
+| TC-RUST-041 | Rust protected endpoint accepts valid credentials | Call protected endpoint with correct Basic credentials. | Returns `200`. |
+| TC-RUST-042 | Rust items invalid type validation | Call `GET /index.php/apps/news/api/v1-3/items?type=99&id=0`. | Returns `400` with `{"detail":"Invalid item selection type"}`. |
+| TC-RUST-043 | Rust v1-2 item read missing detail | Call `POST /index.php/apps/news/api/v1-2/items/{item_id}/read` with non-existent item ID. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-044 | Rust v1-3 item star missing detail | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/star` with non-existent item ID. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-045 | Rust v1-2 guid-star missing detail | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star` with non-existent guid-hash. | Returns `404` with `{"detail":"Item not found"}`. |

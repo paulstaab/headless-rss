@@ -1,10 +1,10 @@
-# Migration State (2026-03-05)
+# Migration State (2026-03-06)
 
 ## Snapshot
 - Migration target: Rust reimplementation of `headless-rss` with SQLite compatibility and Nextcloud News API parity.
 - Stack decisions are documented in `docs/techstack.md`.
 - Current Rust workspace location: `rust/`.
-- Current Rust test status: `cargo test` passes (`6 passed, 0 failed`).
+- Current Rust test status: `cargo test` passes (`43 passed, 0 failed`).
 
 ## Implemented So Far
 
@@ -17,6 +17,10 @@
   - `rust/src/config.rs`
   - `rust/src/db.rs`
   - `rust/src/api.rs`
+  - `rust/src/api/v1_2.rs`
+  - `rust/src/api/v1_3.rs`
+  - `rust/src/email_credentials.rs`
+  - `rust/src/updater.rs`
 - Added Rust migration notes/readme:
   - `rust/README.md`
 
@@ -24,19 +28,56 @@
 - Axum HTTP server boots from `main.rs` with `serve` command.
 - SQLite pool via `sqlx` in `db.rs`.
 - Config/env handling in `config.rs`:
-  - `USERNAME`, `PASSWORD`, `VERSION`, `DATABASE_PATH`
+  - `USERNAME`, `PASSWORD`, `VERSION`, `DATABASE_PATH`, `FEED_UPDATE_FREQUENCY_MIN`
   - default DB path supports both repo root and `rust/` working directory layouts.
+- CLI `update` command now executes Rust feed update workflow via `rust/src/updater.rs`.
+- Server runtime now runs feed updates at startup and periodically in the background based on `FEED_UPDATE_FREQUENCY_MIN`.
+- API version route wiring is split into version-specific files: `rust/src/api/v1_2.rs` and `rust/src/api/v1_3.rs`.
 
 ### Implemented Rust API endpoints
 - Service:
   - `GET /status`
 - Nextcloud v1-2 and v1-3 (implemented in lockstep):
   - `GET /version`
-  - `GET /feeds` (read-only)
-  - `GET /folders` (read-only)
+  - Feed endpoints:
+    - `GET /feeds`
+    - `POST /feeds`
+    - `DELETE /feeds/{feed_id}`
+    - `v1-2: PUT /feeds/{feed_id}/move`
+    - `v1-3: POST /feeds/{feed_id}/move`
+    - `v1-2: PUT /feeds/{feed_id}/rename`
+    - `v1-3: POST /feeds/{feed_id}/rename`
+    - `v1-2: PUT /feeds/{feed_id}/read`
+    - `v1-3: POST /feeds/{feed_id}/read`
+  - Folder endpoints:
+    - `GET /folders`
+    - `POST /folders`
+    - `DELETE /folders/{folder_id}`
+    - `PUT /folders/{folder_id}`
+    - `POST /folders/{folder_id}/read`
   - `GET /items` (read-only)
   - `GET /items/updated` (read-only)
   - `GET /items/{item_id}/content` (read-only)
+  - `v1-2` write endpoints for items:
+    - `POST /items/{item_id}/read`
+    - `PUT /items/read/multiple`
+    - `PUT /items/{item_id}/unread`
+    - `PUT /items/unread/multiple`
+    - `PUT /items/{feed_id}/{guid_hash}/star`
+    - `PUT /items/star/multiple`
+    - `PUT /items/{feed_id}/{guid_hash}/unstar`
+    - `PUT /items/unstar/multiple`
+    - `PUT /items/read`
+  - `v1-3` write endpoints for items:
+    - `POST /items/{item_id}/read`
+    - `POST /items/read/multiple`
+    - `POST /items/{item_id}/unread`
+    - `POST /items/unread/multiple`
+    - `POST /items/{item_id}/star`
+    - `POST /items/star/multiple`
+    - `POST /items/{item_id}/unstar`
+    - `POST /items/unstar/multiple`
+    - `POST /items/read`
 
 ### Compatibility behavior currently implemented
 - CamelCase response fields where expected.
@@ -45,10 +86,19 @@
 - Basic auth behavior on protected endpoints matches Python app rules when both `USERNAME` and `PASSWORD` are set.
 - Item `body` field behavior matches Python: prefer `summary`, fall back to `content`.
 - Missing item content returns `404` with `{"detail":"Item not found"}`.
+- `v1-2` and `v1-3` now preserve item write method/payload differences:
+  - `v1-2` uses guid-hash star/unstar routes and `PUT` for most item write actions.
+  - `v1-3` uses item-id star/unstar routes and `POST` write actions with `itemIds` payload where required.
+- Feed and folder writes are now implemented with version-specific method differences for feed move/rename/read (`PUT` in `v1-2`, `POST` in `v1-3`).
+- Feed creation now performs HTTP fetch + feed parsing and inserts initial feed metadata and entries.
+- Rust feed creation now includes SSRF URL validation and returns `400` for blocked hosts/schemes.
 
 ## Validation Completed
 - Rust tests:
-  - `cd rust && cargo test` -> pass (6 tests)
+  - `cd rust && cargo test` -> pass (43 tests)
+- Runtime smoke:
+  - `cargo run -- serve --host 127.0.0.1 --port 18004`
+  - `curl http://127.0.0.1:18004/status` -> `{"status":"ok"}`
 - Prior Python validation (already run earlier in this migration session):
   - `uv run alembic upgrade head`
   - `uv run --dev pre-commit run --all-files`
@@ -57,11 +107,48 @@
   - `uv run --dev python -m src.cli update`
 
 ## Known Gaps
-- No Rust write endpoints yet for feeds/folders/items.
-- No Rust scheduler/feed update workflow yet.
-- Rust CLI subcommands `update` and `add-email-credentials` are scaffolded but not implemented.
+- Rust feed creation SSRF behavior is implemented for blocked host classes; broader parity tests are still pending.
 - Rust-side SQL migrations are not established yet (decision is Rust-first migrations).
 - Email/IMAP and OpenAI features intentionally deferred until after core parity.
+
+## Newly Added Test Coverage
+- Added Rust parity tests for feed/folder write error paths:
+  - duplicate folder create -> `409`
+  - missing folder delete -> `404`
+  - duplicate feed create -> `409`
+  - feed create with missing folder -> `422`
+  - missing feed delete -> `404`
+  - feed move to missing folder -> `422`
+- Added Rust success-path parity tests:
+  - feed create response payload includes expected metadata fields and `newestItemId`
+  - folder read endpoint marks folder-scoped items as read
+- Added method-specific parity tests for feed rename/read routes:
+  - `v1-2` rename/read success paths (`PUT`)
+  - `v1-3` rename success path (`POST`)
+  - method-mismatch checks return `405` for route-specific wrong verbs
+- Added delete-side-effect parity tests:
+  - deleting a feed removes its associated articles
+  - deleting a folder removes feeds in the folder and their associated articles
+- Added Rust updater tests:
+  - due-feed update inserts new articles from parsed feed entries
+  - failed update persists `update_error_count` and `last_update_error`
+- Added Rust add-email-credentials tests:
+  - credentials are persisted only when mailbox validation succeeds
+  - failed validation prevents persistence
+- Added additional API parity tests from Python suites:
+  - folder create invalid-name -> `422`
+  - folder rename duplicate-name -> `409`
+  - folder rename invalid-name -> `422`
+  - feed create unreadable source -> `422`
+  - feed create payload includes non-null `nextUpdateTime`
+- Added further API/auth parity tests:
+  - missing-feed detail assertions for v1-2 rename and v1-3 read routes (`404` with feed-id detail)
+  - protected endpoint auth parity for invalid and valid Basic credentials
+- Added item endpoint parity/error-detail tests:
+  - invalid item selection type returns `400` with `Invalid item selection type`
+  - v1-2 item read missing id returns `404` with `Item not found`
+  - v1-3 item star missing id returns `404` with `Item not found`
+  - v1-2 guid-hash star with missing entry returns `404` with `Item not found`
 
 ## Current Working Tree Notes
 - Files with migration changes include:
@@ -74,22 +161,12 @@
 - `.github/copilot-instructions.md` is also modified in the worktree and was treated as pre-existing/unrelated during migration work.
 
 ## Planned Next Steps (Priority Order)
-1. Implement item write endpoints in Rust for both v1-2 and v1-3:
-   - read/unread single
-   - read/unread multiple
-   - star/unstar single
-   - star/unstar multiple
-   - mark-all-read
-2. Implement feed and folder write endpoints in Rust:
-   - create/delete/rename/move behaviors
-   - preserve v1-2 vs v1-3 method/route differences
-   - preserve Python-compatible status codes and error payloads
-3. Expand Rust endpoint tests toward parity with Python API test cases:
+1. Expand Rust endpoint tests toward parity with Python API test cases:
    - mirror high-value tests from `tests/api/nextcloud_news/v1_2/` and `v1_3/`
-4. Add Rust scheduler skeleton and feed update loop integration (without full parsing logic first).
-5. Implement Rust `update` CLI parity on top of the scheduler/update service layer.
-6. Introduce Rust-managed SQL migrations and baseline schema compatibility checks against existing DB.
-7. After core parity: implement IMAP/newsletter and OpenAI summary features.
+2. Introduce Rust-managed SQL migrations and baseline schema compatibility checks against existing DB.
+3. Expand API parity tests for remaining content-level and payload-detail parity against Python fixtures.
+4. Expand Rust CLI coverage around `add-email-credentials` runtime behavior against a controlled IMAP test endpoint.
+5. After core parity: implement IMAP/newsletter and OpenAI summary features.
 
 ## Quick Resume Commands For Tomorrow
 ```bash

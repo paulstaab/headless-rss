@@ -1,6 +1,8 @@
 mod api;
 mod config;
 mod db;
+mod email_credentials;
+mod updater;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -8,6 +10,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use tokio::net::TcpListener;
+use tokio::time::{Duration, sleep};
 use tracing_subscriber::EnvFilter;
 
 use api::AppState;
@@ -54,23 +57,15 @@ async fn main() -> anyhow::Result<()> {
         port: 8000,
     }) {
         Commands::Serve { host, port } => serve(config, host, port).await,
-        Commands::Update => {
-            tracing::warn!("update command is not implemented yet in rust");
-            Ok(())
-        }
+        Commands::Update => updater::update_all(&config).await,
         Commands::AddEmailCredentials {
             server,
             port,
             username,
-            ..
+            password,
         } => {
-            tracing::warn!(
-                server,
-                port,
-                username,
-                "add-email-credentials is not implemented yet in rust"
-            );
-            Ok(())
+            email_credentials::add_email_credentials(&config, server, port, username, password)
+                .await
         }
     }
 }
@@ -87,6 +82,24 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
     let pool = db::create_pool(&config.db_path)
         .await
         .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
+
+    let scheduler_pool = pool.clone();
+    let scheduler_testing_mode = config.testing_mode;
+    let scheduler_interval = Duration::from_secs((config.feed_update_frequency_min as u64) * 60);
+    tokio::spawn(async move {
+        if let Err(err) = updater::update_due_feeds(&scheduler_pool, scheduler_testing_mode).await {
+            tracing::warn!(error = %err, "startup feed update cycle failed");
+        }
+
+        loop {
+            sleep(scheduler_interval).await;
+            if let Err(err) =
+                updater::update_due_feeds(&scheduler_pool, scheduler_testing_mode).await
+            {
+                tracing::warn!(error = %err, "scheduled feed update cycle failed");
+            }
+        }
+    });
 
     let state = AppState {
         pool,

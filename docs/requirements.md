@@ -110,17 +110,55 @@ Test cases are specified in separate documents:
   - `/status`
   - `/index.php/apps/news/api/v1-2/version`
   - `/index.php/apps/news/api/v1-3/version`
-  - `/index.php/apps/news/api/v1-2/feeds` (read-only)
-  - `/index.php/apps/news/api/v1-3/feeds` (read-only)
-  - `/index.php/apps/news/api/v1-2/folders` (read-only)
-  - `/index.php/apps/news/api/v1-3/folders` (read-only)
+  - `/index.php/apps/news/api/v1-2/feeds`
+  - `/index.php/apps/news/api/v1-3/feeds`
+  - `/index.php/apps/news/api/v1-2/folders`
+  - `/index.php/apps/news/api/v1-3/folders`
+  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}` (`DELETE`)
+  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}` (`DELETE`)
+  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}/move` (`PUT`)
+  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}/move` (`POST`)
+  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` (`PUT`)
+  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}/rename` (`POST`)
+  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}/read` (`PUT`)
+  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}/read` (`POST`)
+  - `/index.php/apps/news/api/v1-2/folders/{folder_id}` (`DELETE`, `PUT`)
+  - `/index.php/apps/news/api/v1-3/folders/{folder_id}` (`DELETE`, `PUT`)
+  - `/index.php/apps/news/api/v1-2/folders/{folder_id}/read` (`POST`)
+  - `/index.php/apps/news/api/v1-3/folders/{folder_id}/read` (`POST`)
   - `/index.php/apps/news/api/v1-2/items` (read-only)
   - `/index.php/apps/news/api/v1-3/items` (read-only)
   - `/index.php/apps/news/api/v1-2/items/updated` (read-only)
   - `/index.php/apps/news/api/v1-3/items/updated` (read-only)
   - `/index.php/apps/news/api/v1-2/items/{item_id}/content` (read-only)
   - `/index.php/apps/news/api/v1-3/items/{item_id}/content` (read-only)
+  - `/index.php/apps/news/api/v1-2/items/{item_id}/read`
+  - `/index.php/apps/news/api/v1-2/items/read/multiple`
+  - `/index.php/apps/news/api/v1-2/items/{item_id}/unread`
+  - `/index.php/apps/news/api/v1-2/items/unread/multiple`
+  - `/index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star`
+  - `/index.php/apps/news/api/v1-2/items/star/multiple`
+  - `/index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/unstar`
+  - `/index.php/apps/news/api/v1-2/items/unstar/multiple`
+  - `/index.php/apps/news/api/v1-2/items/read`
+  - `/index.php/apps/news/api/v1-3/items/{item_id}/read`
+  - `/index.php/apps/news/api/v1-3/items/read/multiple`
+  - `/index.php/apps/news/api/v1-3/items/{item_id}/unread`
+  - `/index.php/apps/news/api/v1-3/items/unread/multiple`
+  - `/index.php/apps/news/api/v1-3/items/{item_id}/star`
+  - `/index.php/apps/news/api/v1-3/items/star/multiple`
+  - `/index.php/apps/news/api/v1-3/items/{item_id}/unstar`
+  - `/index.php/apps/news/api/v1-3/items/unstar/multiple`
+  - `/index.php/apps/news/api/v1-3/items/read`
 - Rust feed responses shall preserve camelCase fields and map root folder IDs to `folderId: null`.
 - Rust folder responses shall omit the internal root folder.
 - Rust auth behavior shall match current API behavior for protected endpoints when `USERNAME` and `PASSWORD` are both set.
 - Rust default database path handling shall support running from repository root and from `rust/`.
+- Rust feed creation shall validate remote URLs with SSRF protections:
+  - only `http` and `https` schemes allowed
+  - block loopback, private, link-local, unspecified, multicast, and metadata service addresses
+  - allow localhost only in testing mode (`TESTING_MODE=true` in Rust env)
+- Rust CLI `update` command shall execute a feed update cycle for due feeds (`next_update_time` is null or in the past), insert new articles by guid-hash de-duplication, and persist feed update errors (`update_error_count`, `last_update_error`) on failures.
+- Rust `serve` command shall trigger a startup update cycle and continue periodic due-feed updates based on `FEED_UPDATE_FREQUENCY_MIN`.
+- Rust CLI `add-email-credentials` command shall validate IMAP connectivity/login before persisting credentials into `email_credentials`.
+- Rust API version routing shall be separated into version-specific source files for maintainability (`rust/src/api/v1_2.rs` and `rust/src/api/v1_3.rs`).
