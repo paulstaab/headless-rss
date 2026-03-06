@@ -153,3 +153,52 @@ Source: `rust/src/api.rs`
 | TC-RUST-043 | Rust v1-2 item read missing detail | Call `POST /index.php/apps/news/api/v1-2/items/{item_id}/read` with non-existent item ID. | Returns `404` with `{"detail":"Item not found"}`. |
 | TC-RUST-044 | Rust v1-3 item star missing detail | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/star` with non-existent item ID. | Returns `404` with `{"detail":"Item not found"}`. |
 | TC-RUST-045 | Rust v1-2 guid-star missing detail | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star` with non-existent guid-hash. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-046 | Rust v1-2 read-multiple state update | Call `PUT /index.php/apps/news/api/v1-2/items/read/multiple` with `{"items":[id]}` for an unread item. | Returns `200`; item is marked `unread=false` and `lastModified` increases. |
+| TC-RUST-047 | Rust v1-2 guid-star-multiple state update | Call `PUT /index.php/apps/news/api/v1-2/items/star/multiple` with a valid guid-hash payload. | Returns `200`; item is marked `starred=true` and `lastModified` increases. |
+| TC-RUST-048 | Rust v1-3 unread-multiple state update | Call `POST /index.php/apps/news/api/v1-3/items/unread/multiple` with `{"itemIds":[id]}` after marking item read. | Returns `200`; item is marked `unread=true` and `lastModified` increases. |
+| TC-RUST-049 | Rust v1-3 unstar-multiple state update | Call `POST /index.php/apps/news/api/v1-3/items/unstar/multiple` with `{"itemIds":[id]}` after starring item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
+| TC-RUST-050 | Rust v1-2 mark-all-read state update | Call `PUT /index.php/apps/news/api/v1-2/items/read` with `{"newestItemId":id}`. | Returns `200`; matching items are marked `unread=false` and `lastModified` increases. |
+| TC-RUST-051 | Rust v1-3 mark-all-read state update | Call `POST /index.php/apps/news/api/v1-3/items/read` with `{"newestItemId":id}`. | Returns `200`; matching items are marked `unread=false` and `lastModified` increases. |
+
+### Rust Single-Item Write Parity Test Cases
+Source: `rust/src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-053 | Rust v1-2 single read state update | Call `POST /index.php/apps/news/api/v1-2/items/{item_id}/read` for an unread item. | Returns `200`; item is marked `unread=false` and `lastModified` increases. |
+| TC-RUST-054 | Rust v1-2 single unread state update | Call `PUT /index.php/apps/news/api/v1-2/items/{item_id}/unread` for a read item. | Returns `200`; item is marked `unread=true` and `lastModified` increases. |
+| TC-RUST-055 | Rust v1-2 single unstar state update | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/unstar` for a starred item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
+| TC-RUST-056 | Rust v1-3 single read state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/read` for an unread item. | Returns `200`; item is marked `unread=false` and `lastModified` increases. |
+| TC-RUST-057 | Rust v1-3 single unread state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/unread` for a read item. | Returns `200`; item is marked `unread=true` and `lastModified` increases. |
+| TC-RUST-058 | Rust v1-3 single star state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/star` for an unstarred item. | Returns `200`; item is marked `starred=true` and `lastModified` increases. |
+| TC-RUST-059 | Rust v1-3 single unstar state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/unstar` for a starred item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
+
+### Rust Item Query Contract Test Cases
+Source: `rust/src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-060 | Rust items folder selection | Call `GET /index.php/apps/news/api/v1-3/items?type=1&id={folder_id}` with items in and out of that folder. | Returns only items whose feeds belong to the specified folder. |
+| TC-RUST-061 | Rust items starred selection | Call `GET /index.php/apps/news/api/v1-3/items?type=2&id=0` with mixed starred/unstarred items. | Returns only starred items. |
+| TC-RUST-062 | Rust items unread filtering | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&getRead=false` with mixed read/unread items. | Returns only unread items. |
+| TC-RUST-063 | Rust items oldest-first ordering | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&oldestFirst=true` with multiple item IDs. | Returns items ordered by ascending item ID. |
+| TC-RUST-064 | Rust items batch-size limit | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&batchSize=1` with multiple items. | Returns exactly one item, respecting descending default order. |
+| TC-RUST-065 | Rust items offset/newest-id semantics | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&offset={id}` with newer and older items. | Returns only items with `id <= offset`, matching Python newest-item-id semantics. |
+
+### Rust Updated-Items Query Contract Test Cases
+Source: `rust/src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-066 | Rust updated-items feed selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=0&id={feed_id}` with mixed modification times in one feed. | Returns only feed items where `lastModified >= ts`. |
+| TC-RUST-067 | Rust updated-items folder selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=1&id={folder_id}` with mixed modification times in one folder. | Returns only folder items where `lastModified >= ts`. |
+| TC-RUST-068 | Rust updated-items starred selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=2&id=0` with mixed starred items and modification times. | Returns only starred items where `lastModified >= ts`. |
+| TC-RUST-069 | Rust updated-items all selection threshold | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with mixed modification times. | Returns all items across feeds where `lastModified >= ts`. |
+| TC-RUST-070 | Rust updated-items all selection ordering | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with multiple matching IDs. | Returns matching items in descending item-ID order (`oldestFirst=false`). |
+
+### Rust Migration Bootstrap Test Cases
+Source: `rust/src/db.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-052 | Rust SQLx migration bootstrap | Create a new SQLite file and initialize Rust pool via `create_pool`. | SQLx baseline migration is applied, core tables are created, and root folder `id=0` exists with `is_root=1`. |

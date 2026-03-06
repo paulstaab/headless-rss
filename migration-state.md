@@ -4,7 +4,7 @@
 - Migration target: Rust reimplementation of `headless-rss` with SQLite compatibility and Nextcloud News API parity.
 - Stack decisions are documented in `docs/techstack.md`.
 - Current Rust workspace location: `rust/`.
-- Current Rust test status: `cargo test` passes (`43 passed, 0 failed`).
+- Current Rust test status: `cargo test` passes (`67 passed, 0 failed`).
 
 ## Implemented So Far
 
@@ -27,6 +27,8 @@
 ### Runtime and config
 - Axum HTTP server boots from `main.rs` with `serve` command.
 - SQLite pool via `sqlx` in `db.rs`.
+- Rust-managed SQL migrations are now wired in `db.rs` via SQLx migrator and run automatically on pool initialization.
+- Rust migration baseline file added at `rust/migrations/202603060001_baseline.sql`.
 - Config/env handling in `config.rs`:
   - `USERNAME`, `PASSWORD`, `VERSION`, `DATABASE_PATH`, `FEED_UPDATE_FREQUENCY_MIN`
   - default DB path supports both repo root and `rust/` working directory layouts.
@@ -95,7 +97,7 @@
 
 ## Validation Completed
 - Rust tests:
-  - `cd rust && cargo test` -> pass (43 tests)
+  - `cd rust && cargo test` -> pass (67 tests)
 - Runtime smoke:
   - `cargo run -- serve --host 127.0.0.1 --port 18004`
   - `curl http://127.0.0.1:18004/status` -> `{"status":"ok"}`
@@ -108,7 +110,6 @@
 
 ## Known Gaps
 - Rust feed creation SSRF behavior is implemented for blocked host classes; broader parity tests are still pending.
-- Rust-side SQL migrations are not established yet (decision is Rust-first migrations).
 - Email/IMAP and OpenAI features intentionally deferred until after core parity.
 
 ## Newly Added Test Coverage
@@ -149,6 +150,28 @@
   - v1-2 item read missing id returns `404` with `Item not found`
   - v1-3 item star missing id returns `404` with `Item not found`
   - v1-2 guid-hash star with missing entry returns `404` with `Item not found`
+- Added item multiple-route state parity tests:
+  - v1-2 `read/multiple` updates `unread` and bumps `last_modified`
+  - v1-2 `star/multiple` (guid-hash payload) updates `starred` and bumps `last_modified`
+  - v1-3 `unread/multiple` updates `unread` and bumps `last_modified`
+  - v1-3 `unstar/multiple` updates `starred` and bumps `last_modified`
+- Added item mark-all-read parity tests:
+  - v1-2 `PUT /items/read` updates `unread` and bumps `last_modified`
+  - v1-3 `POST /items/read` updates `unread` and bumps `last_modified`
+- Added single-item write parity tests:
+  - v1-2 single `read`, `unread`, and guid-hash `unstar` update state and bump `last_modified`
+  - v1-3 single `read`, `unread`, `star`, and `unstar` update state and bump `last_modified`
+- Added item query-contract parity tests:
+  - folder selection (`type=1`) and starred selection (`type=2`) filtering semantics
+  - unread filtering with `getRead=false`
+  - ordering semantics for `oldestFirst=true`
+  - batch limit behavior for `batchSize`
+  - `offset` behavior matching Python's `newest_item_id` filter (`id <= offset`)
+- Added updated-items query-contract parity tests:
+  - feed/folder/starred/all selection behavior with `lastModified` threshold filtering
+  - descending ordering behavior for updated item responses
+- Added Rust migration bootstrap test:
+  - `db::tests::create_pool_runs_migrations_and_bootstraps_root_folder` validates SQLx migration execution, table creation, and root-folder initialization.
 
 ## Current Working Tree Notes
 - Files with migration changes include:
@@ -163,10 +186,9 @@
 ## Planned Next Steps (Priority Order)
 1. Expand Rust endpoint tests toward parity with Python API test cases:
    - mirror high-value tests from `tests/api/nextcloud_news/v1_2/` and `v1_3/`
-2. Introduce Rust-managed SQL migrations and baseline schema compatibility checks against existing DB.
-3. Expand API parity tests for remaining content-level and payload-detail parity against Python fixtures.
-4. Expand Rust CLI coverage around `add-email-credentials` runtime behavior against a controlled IMAP test endpoint.
-5. After core parity: implement IMAP/newsletter and OpenAI summary features.
+2. Expand API parity tests for remaining content-level and payload-detail parity against Python fixtures.
+3. Expand Rust CLI coverage around `add-email-credentials` runtime behavior against a controlled IMAP test endpoint.
+4. After core parity: implement IMAP/newsletter and OpenAI summary features.
 
 ## Quick Resume Commands For Tomorrow
 ```bash

@@ -162,3 +162,5 @@ Test cases are specified in separate documents:
 - Rust `serve` command shall trigger a startup update cycle and continue periodic due-feed updates based on `FEED_UPDATE_FREQUENCY_MIN`.
 - Rust CLI `add-email-credentials` command shall validate IMAP connectivity/login before persisting credentials into `email_credentials`.
 - Rust API version routing shall be separated into version-specific source files for maintainability (`rust/src/api/v1_2.rs` and `rust/src/api/v1_3.rs`).
+- Rust shall apply SQLx-managed schema migrations automatically during database pool initialization (`rust/src/db.rs`) so Rust runtime/CLI commands can bootstrap schema on first run.
+- Rust migration baseline shall include tables and compatibility data bootstrap for `folder`, `feed`, `article`, and `email_credentials`, including ensuring root folder `id=0` exists.
