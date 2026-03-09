@@ -19,6 +19,7 @@ struct FeedToUpdate {
 }
 
 pub async fn update_all(config: &Config) -> Result<()> {
+    tracing::info!("starting rust feed update cycle");
     let pool = db::create_pool(&config.db_path)
         .await
         .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
@@ -37,6 +38,15 @@ pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<u
     .await
     .context("failed to query due feeds")?;
 
+    tracing::debug!(
+        due_feeds = feeds.len(),
+        testing_mode,
+        "loaded due feeds for update"
+    );
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+
     for feed in &feeds {
         if let Err(err) = update_single_feed(pool, feed.id, &feed.url, testing_mode).await {
             let detail = err.to_string();
@@ -49,8 +59,18 @@ pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<u
             .execute(pool)
             .await
             .context("failed to persist feed update error")?;
+            failed += 1;
+        } else {
+            succeeded += 1;
         }
     }
+
+    tracing::info!(
+        due_feeds = feeds.len(),
+        succeeded,
+        failed,
+        "feed update batch summary"
+    );
 
     Ok(feeds.len())
 }
@@ -61,6 +81,7 @@ async fn update_single_feed(
     url: &str,
     testing_mode: bool,
 ) -> Result<()> {
+    tracing::debug!(feed_id, url, testing_mode, "starting feed update");
     validate_remote_url(url, testing_mode).await?;
 
     let response = reqwest::get(url)
@@ -77,7 +98,9 @@ async fn update_single_feed(
     let parsed = feed_rs::parser::parse(&bytes[..]).context("failed to parse feed")?;
 
     let mut inserted = 0usize;
+    let mut processed = 0usize;
     for entry in parsed.entries.iter().take(50) {
+        processed += 1;
         if insert_article_from_entry(pool, feed_id, entry).await? {
             inserted += 1;
         }
@@ -93,7 +116,14 @@ async fn update_single_feed(
     .await
     .context("failed to update feed metadata")?;
 
-    tracing::info!(feed_id, inserted, "feed update completed");
+    let skipped = processed.saturating_sub(inserted);
+    tracing::info!(
+        feed_id,
+        processed,
+        inserted,
+        skipped,
+        "feed update completed"
+    );
     Ok(())
 }
 
@@ -109,6 +139,7 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
     };
 
     let Some(guid) = guid else {
+        tracing::debug!(feed_id, "skipping entry without guid/link/title");
         return Ok(false);
     };
 
@@ -121,6 +152,7 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
             .context("failed to check existing article")?;
 
     if existing.is_some() {
+        tracing::debug!(feed_id, guid_hash, "skipping duplicate entry");
         return Ok(false);
     }
 

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{net::IpAddr, str::FromStr};
 
@@ -266,8 +267,27 @@ pub fn app(state: AppState) -> Router {
         .route("/status", get(status))
         .nest("/index.php/apps/news/api/v1-2", protected_v1_2)
         .nest("/index.php/apps/news/api/v1-3", protected_v1_3)
+        .layer(axum::middleware::from_fn(log_user_interaction))
         .with_state(state)
         .layer(CorsLayer::permissive())
+}
+
+async fn log_user_interaction(request: Request<Body>, next: Next) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let started_at = Instant::now();
+    let response = next.run(request).await;
+    let duration_ms = started_at.elapsed().as_millis() as u64;
+
+    tracing::debug!(
+        method = %method,
+        uri = %uri,
+        status = response.status().as_u16(),
+        duration_ms,
+        "user interaction handled"
+    );
+
+    response
 }
 
 async fn status() -> Json<StatusOut> {
@@ -341,21 +361,34 @@ async fn delete_folder(
     }
 
     // Match Python behavior: deleting a folder removes its feeds and articles.
-    sqlx::query("DELETE FROM article WHERE feed_id IN (SELECT id FROM feed WHERE folder_id = ?)")
+    let deleted_articles = sqlx::query(
+        "DELETE FROM article WHERE feed_id IN (SELECT id FROM feed WHERE folder_id = ?)",
+    )
+    .bind(folder_id)
+    .execute(&state.pool)
+    .await
+    .map_err(internal_error)?
+    .rows_affected();
+    let deleted_feeds = sqlx::query("DELETE FROM feed WHERE folder_id = ?")
         .bind(folder_id)
         .execute(&state.pool)
         .await
-        .map_err(internal_error)?;
-    sqlx::query("DELETE FROM feed WHERE folder_id = ?")
+        .map_err(internal_error)?
+        .rows_affected();
+    let deleted_folders = sqlx::query("DELETE FROM folder WHERE id = ?")
         .bind(folder_id)
         .execute(&state.pool)
         .await
-        .map_err(internal_error)?;
-    sqlx::query("DELETE FROM folder WHERE id = ?")
-        .bind(folder_id)
-        .execute(&state.pool)
-        .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .rows_affected();
+
+    tracing::info!(
+        folder_id,
+        deleted_articles,
+        deleted_feeds,
+        deleted_folders,
+        "folder cleanup completed"
+    );
 
     Ok(StatusCode::OK)
 }
@@ -463,16 +496,25 @@ async fn delete_feed(
         return Err(feed_not_found_with_id(feed_id));
     }
 
-    sqlx::query("DELETE FROM article WHERE feed_id = ?")
+    let deleted_articles = sqlx::query("DELETE FROM article WHERE feed_id = ?")
         .bind(feed_id)
         .execute(&state.pool)
         .await
-        .map_err(internal_error)?;
-    sqlx::query("DELETE FROM feed WHERE id = ?")
+        .map_err(internal_error)?
+        .rows_affected();
+    let deleted_feeds = sqlx::query("DELETE FROM feed WHERE id = ?")
         .bind(feed_id)
         .execute(&state.pool)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .rows_affected();
+
+    tracing::info!(
+        feed_id,
+        deleted_articles,
+        deleted_feeds,
+        "feed/article cleanup completed"
+    );
 
     Ok(StatusCode::OK)
 }

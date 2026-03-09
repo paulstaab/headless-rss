@@ -56,14 +56,26 @@ async fn main() -> anyhow::Result<()> {
         host: "0.0.0.0".to_string(),
         port: 8000,
     }) {
-        Commands::Serve { host, port } => serve(config, host, port).await,
-        Commands::Update => updater::update_all(&config).await,
+        Commands::Serve { host, port } => {
+            tracing::debug!(host = %host, port, "cli command invoked: serve");
+            serve(config, host, port).await
+        }
+        Commands::Update => {
+            tracing::debug!("cli command invoked: update");
+            updater::update_all(&config).await
+        }
         Commands::AddEmailCredentials {
             server,
             port,
             username,
             password,
         } => {
+            tracing::debug!(
+                server = %server,
+                port,
+                username = %username,
+                "cli command invoked: add-email-credentials"
+            );
             email_credentials::add_email_credentials(&config, server, port, username, password)
                 .await
         }

@@ -5,16 +5,16 @@ WORKDIR /app
 COPY rust/Cargo.toml rust/Cargo.lock /app/rust/
 RUN mkdir -p /app/rust/src
 RUN printf 'fn main() { println!("cache warmup"); }\n' > /app/rust/src/main.rs
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     cargo build --manifest-path /app/rust/Cargo.toml --release
 
 # Copy the actual sources after dependency compilation cache has been primed.
 COPY rust/src /app/rust/src
 COPY rust/migrations /app/rust/migrations
 COPY docker/entrypoint /app/docker/entrypoint
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     cargo build --manifest-path /app/rust/Cargo.toml --release
 
 FROM debian:bookworm-slim
