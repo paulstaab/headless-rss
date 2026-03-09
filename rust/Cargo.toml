@@ -25,4 +25,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 assert_cmd = "2.0"
 tempfile = "3.15"
 tower = { version = "0.5", features = ["util"] }
-wiremock = "0.6"

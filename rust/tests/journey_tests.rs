@@ -9,14 +9,16 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use axum::Router;
+use axum::http::header;
+use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tempfile::TempDir;
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use tokio::net::TcpListener as TokioTcpListener;
 
 const API_V13: &str = "/index.php/apps/news/api/v1-3";
 const API_V12: &str = "/index.php/apps/news/api/v1-2";
@@ -31,7 +33,7 @@ struct ScenarioContext {
     base_url: String,
     client: Client,
     _server: RunningServer,
-    _mock_server: MockServer,
+    _mock_feed_base_url: String,
     feed_urls: Vec<String>,
     auth: Option<(String, String)>,
 }
@@ -592,8 +594,8 @@ async fn ts_e2e_019_restart_with_persistent_database() {
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let db_path = temp_dir.path().join("journey-restart.sqlite3");
 
-    let mock_server = start_mock_feed_server().await;
-    let feed_urls = shared_feed_urls(&mock_server);
+    let mock_feed_base_url = start_mock_feed_server().await;
+    let feed_urls = shared_feed_urls(&mock_feed_base_url);
 
     let port = find_free_port();
     let base_url = format!("http://127.0.0.1:{port}");
@@ -636,8 +638,8 @@ async fn setup_context(auth: Option<(&str, &str)>) -> ScenarioContext {
     let db_path = temp_dir.path().join("journey.sqlite3");
     let auth_in = auth;
 
-    let mock_server = start_mock_feed_server().await;
-    let feed_urls = shared_feed_urls(&mock_server);
+    let mock_feed_base_url = start_mock_feed_server().await;
+    let feed_urls = shared_feed_urls(&mock_feed_base_url);
 
     let port = find_free_port();
     let base_url = format!("http://127.0.0.1:{port}");
@@ -655,18 +657,18 @@ async fn setup_context(auth: Option<(&str, &str)>) -> ScenarioContext {
         base_url,
         client,
         _server: server,
-        _mock_server: mock_server,
+        _mock_feed_base_url: mock_feed_base_url,
         feed_urls,
         auth: auth_in.map(|(u, p)| (u.to_string(), p.to_string())),
     }
 }
 
-fn shared_feed_urls(server: &MockServer) -> Vec<String> {
+fn shared_feed_urls(base_url: &str) -> Vec<String> {
     vec![
-        format!("{}/tagesschau.xml", server.uri()),
-        format!("{}/heise.xml", server.uri()),
-        format!("{}/heise-top.xml", server.uri()),
-        format!("{}/simon.xml", server.uri()),
+        format!("{base_url}/tagesschau.xml"),
+        format!("{base_url}/heise.xml"),
+        format!("{base_url}/heise-top.xml"),
+        format!("{base_url}/simon.xml"),
     ]
 }
 
@@ -939,48 +941,56 @@ async fn add_feed(
 }
 
 /// Starts a local feed fixture server used by journey tests.
-async fn start_mock_feed_server() -> MockServer {
-    let server = MockServer::start().await;
+async fn start_mock_feed_server() -> String {
+    let tagesschau = atom_feed("tagesschau-feed", "tagesschau-entry", "Tagesschau Entry");
+    let heise = atom_feed("heise-feed", "heise-entry", "Heise Entry");
+    let heise_top = atom_feed("heise-top-feed", "heise-top-entry", "Heise Top Entry");
+    let simon = atom_feed("simon-feed", "simon-entry", "Simon Entry");
 
-    mount_feed(
-        &server,
-        "/tagesschau.xml",
-        atom_feed("tagesschau-feed", "tagesschau-entry", "Tagesschau Entry"),
-    )
-    .await;
-    mount_feed(
-        &server,
-        "/heise.xml",
-        atom_feed("heise-feed", "heise-entry", "Heise Entry"),
-    )
-    .await;
-    mount_feed(
-        &server,
-        "/heise-top.xml",
-        atom_feed("heise-top-feed", "heise-top-entry", "Heise Top Entry"),
-    )
-    .await;
-    mount_feed(
-        &server,
-        "/simon.xml",
-        atom_feed("simon-feed", "simon-entry", "Simon Entry"),
-    )
-    .await;
-
-    server
-}
-
-/// Mounts one static Atom feed response.
-async fn mount_feed(server: &MockServer, route: &str, body: String) {
-    Mock::given(method("GET"))
-        .and(path(route))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .insert_header("content-type", "application/atom+xml")
-                .set_body_string(body),
+    let app = Router::new()
+        .route(
+            "/tagesschau.xml",
+            get(move || {
+                let body = tagesschau.clone();
+                async move { ([(header::CONTENT_TYPE, "application/atom+xml")], body) }
+            }),
         )
-        .mount(server)
-        .await;
+        .route(
+            "/heise.xml",
+            get(move || {
+                let body = heise.clone();
+                async move { ([(header::CONTENT_TYPE, "application/atom+xml")], body) }
+            }),
+        )
+        .route(
+            "/heise-top.xml",
+            get(move || {
+                let body = heise_top.clone();
+                async move { ([(header::CONTENT_TYPE, "application/atom+xml")], body) }
+            }),
+        )
+        .route(
+            "/simon.xml",
+            get(move || {
+                let body = simon.clone();
+                async move { ([(header::CONTENT_TYPE, "application/atom+xml")], body) }
+            }),
+        );
+
+    let listener = TokioTcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind mock feed listener");
+    let addr = listener
+        .local_addr()
+        .expect("failed to get mock feed local address");
+
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("mock feed server crashed");
+    });
+
+    format!("http://{addr}")
 }
 
 /// Builds a tiny Atom feed fixture with a single entry.
