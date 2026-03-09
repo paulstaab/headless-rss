@@ -72,6 +72,8 @@ jobs:
         context: .
         push: true
         tags: ghcr.io/${{ github.repository }}:alpha
-        platforms: linux/amd64,linux/arm64
+        # Temporarily disable ARM builds.
+        # platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         cache-from: type=gha
         cache-to: type=gha,mode=max
