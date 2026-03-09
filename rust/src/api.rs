@@ -898,13 +898,15 @@ async fn get_items(
 ) -> Result<Json<ItemGetOut>, (StatusCode, Json<serde_json::Value>)> {
     let rows = query_items(
         &state.pool,
-        params.r#type,
-        params.id,
-        params.get_read,
-        params.oldest_first,
-        params.last_modified,
-        params.offset,
-        params.batch_size,
+        QueryItemsInput {
+            selection_type: params.r#type,
+            selection_id: params.id,
+            get_read: params.get_read,
+            oldest_first: params.oldest_first,
+            last_modified: params.last_modified,
+            newest_item_id: params.offset,
+            batch_size: params.batch_size,
+        },
     )
     .await?;
 
@@ -919,13 +921,15 @@ async fn get_updated_items(
 ) -> Result<Json<ItemGetOut>, (StatusCode, Json<serde_json::Value>)> {
     let rows = query_items(
         &state.pool,
-        params.r#type,
-        params.id,
-        true,
-        false,
-        params.last_modified,
-        0,
-        -1,
+        QueryItemsInput {
+            selection_type: params.r#type,
+            selection_id: params.id,
+            get_read: true,
+            oldest_first: false,
+            last_modified: params.last_modified,
+            newest_item_id: 0,
+            batch_size: -1,
+        },
     )
     .await?;
 
@@ -1115,14 +1119,18 @@ fn item_row_to_out(item: ItemRow) -> ItemOut {
 
 async fn query_items(
     pool: &SqlitePool,
-    selection_type: i64,
-    selection_id: i64,
-    get_read: bool,
-    oldest_first: bool,
-    last_modified: i64,
-    newest_item_id: i64,
-    batch_size: i64,
+    input: QueryItemsInput,
 ) -> Result<Vec<ItemRow>, (StatusCode, Json<serde_json::Value>)> {
+    let QueryItemsInput {
+        selection_type,
+        selection_id,
+        get_read,
+        oldest_first,
+        last_modified,
+        newest_item_id,
+        batch_size,
+    } = input;
+
     let mut qb: QueryBuilder<'_, Sqlite> = QueryBuilder::new(
         "SELECT article.id, article.title, article.content, article.author, article.content_hash, article.enclosure_link, article.enclosure_mime, article.feed_id, article.fingerprint, article.guid, article.guid_hash, article.last_modified, article.media_description, article.media_thumbnail, article.pub_date, article.rtl, article.starred, article.unread, article.updated_date, article.url, article.summary FROM article",
     );
@@ -1184,6 +1192,16 @@ async fn query_items(
         .fetch_all(pool)
         .await
         .map_err(internal_error)
+}
+
+struct QueryItemsInput {
+    selection_type: i64,
+    selection_id: i64,
+    get_read: bool,
+    oldest_first: bool,
+    last_modified: i64,
+    newest_item_id: i64,
+    batch_size: i64,
 }
 
 async fn get_article_id_by_guid_hash(

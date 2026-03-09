@@ -1,13 +1,14 @@
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use std::str::FromStr;
+use std::path::Path;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
-    let db_url = format!("sqlite://{db_path}");
-    let options = SqliteConnectOptions::from_str(&db_url)?.create_if_missing(false);
+    let options = SqliteConnectOptions::new()
+        .filename(Path::new(db_path))
+        .create_if_missing(true);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)

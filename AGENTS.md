@@ -114,3 +114,6 @@ When implementing fixes, refactors, or new features, keep documentation synchron
 - Prefer behavior-preserving edits unless the task explicitly requests behavior changes.
 - Add or update tests when behavior changes.
 - Keep changes readable and easy to review.
+
+# Documentation
+- Always add or update rustdoc / docstring when adding or changing a function or a module.
