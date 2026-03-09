@@ -28,7 +28,7 @@ pub async fn update_all(config: &Config) -> Result<()> {
 pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<usize> {
     let now_ts = unix_now();
     let feeds: Vec<FeedToUpdate> = sqlx::query_as(
-        "SELECT id, url FROM feed WHERE next_update_time IS NULL OR next_update_time <= ?",
+        "SELECT id, url FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
     )
     .bind(now_ts)
     .fetch_all(pool)
@@ -242,7 +242,7 @@ mod tests {
     async fn setup_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(
-            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR)",
+            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR, is_mailing_list BOOLEAN NOT NULL DEFAULT 0)",
         )
         .execute(&pool)
         .await
@@ -292,7 +292,7 @@ mod tests {
     async fn update_due_feeds_inserts_new_articles() {
         let pool = setup_pool().await;
         let url = start_fixture_feed_server().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (1, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (1, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
             .bind(url)
             .execute(&pool)
             .await
@@ -318,7 +318,7 @@ mod tests {
     #[tokio::test]
     async fn update_due_feeds_persists_errors() {
         let pool = setup_pool().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (2, 'file:///etc/passwd', 'Bad', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (2, 'file:///etc/passwd', 'Bad', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL, 0)")
             .execute(&pool)
             .await
             .unwrap();
@@ -341,5 +341,29 @@ mod tests {
                 .unwrap_or_default()
                 .contains("Only http and https are permitted")
         );
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_skips_mailing_list_rows() {
+        let pool = setup_pool().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (3, 'newsletter@example.com', 'News', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL, 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, false).await.unwrap();
+        assert_eq!(updated, 0);
+
+        let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 3")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let err_detail: Option<String> =
+            sqlx::query_scalar("SELECT last_update_error FROM feed WHERE id = 3")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(err_count, 0);
+        assert_eq!(err_detail, None);
     }
 }

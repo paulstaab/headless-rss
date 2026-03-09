@@ -159,6 +159,7 @@ Source: `rust/src/api.rs`
 | TC-RUST-049 | Rust v1-3 unstar-multiple state update | Call `POST /index.php/apps/news/api/v1-3/items/unstar/multiple` with `{"itemIds":[id]}` after starring item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
 | TC-RUST-050 | Rust v1-2 mark-all-read state update | Call `PUT /index.php/apps/news/api/v1-2/items/read` with `{"newestItemId":id}`. | Returns `200`; matching items are marked `unread=false` and `lastModified` increases. |
 | TC-RUST-051 | Rust v1-3 mark-all-read state update | Call `POST /index.php/apps/news/api/v1-3/items/read` with `{"newestItemId":id}`. | Returns `200`; matching items are marked `unread=false` and `lastModified` increases. |
+| TC-RUST-052 | Rust updater skips mailing-list feeds | Seed a due feed row with `is_mailing_list=1` and run Rust updater cycle. | Row is excluded from web-feed updates, and update error fields remain unchanged. |
 
 ### Rust Single-Item Write Parity Test Cases
 Source: `rust/src/api.rs`
