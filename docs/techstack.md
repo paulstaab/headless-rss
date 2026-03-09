@@ -70,6 +70,7 @@ Note: we can also evaluate `rusqlite` for tighter low-level control, but `sqlx` 
 
 ### Packaging and Dev Experience
 - Multi-stage Docker build (builder + slim runtime).
+- Buildx GitHub Actions cache (`cache-from/cache-to type=gha`) for faster repeated multi-arch (`amd64`/`arm64`) builds.
 - Continue devcontainer-based local development with Python tooling plus Rust/Cargo support during migration.
 
 ## Compatibility Strategy
