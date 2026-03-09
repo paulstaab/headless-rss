@@ -612,7 +612,7 @@ async fn ts_e2e_019_restart_with_persistent_database() {
     }
 
     mark_all_feeds_due(&db_path).await;
-    run_update_command(&db_path, None, None);
+    run_update_command(&db_path, None, None).await;
 
     let feeds_before =
         get_json_from_client(&client, &base_url, &format!("{API_V13}/feeds"), None).await;
@@ -689,7 +689,8 @@ async fn run_update_cycle(context: &ScenarioContext) {
         &context.db_path,
         auth_for(context).map(|(u, _)| u),
         auth_for(context).map(|(_, p)| p),
-    );
+    )
+    .await;
 }
 
 async fn insert_feed_row(db_path: &Path, url: &str, folder_id: i64) {
@@ -863,23 +864,33 @@ fn spawn_server(
 }
 
 /// Runs the CLI update command against the same isolated database.
-fn run_update_command(db_path: &Path, username: Option<&str>, password: Option<&str>) {
-    let mut command = Command::new(binary_path());
-    command
-        .arg("update")
-        .env("DATABASE_PATH", db_path)
-        .env("TESTING_MODE", "true")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+async fn run_update_command(db_path: &Path, username: Option<&str>, password: Option<&str>) {
+    let db_path = db_path.to_path_buf();
+    let username = username.map(ToOwned::to_owned);
+    let password = password.map(ToOwned::to_owned);
 
-    if let Some(user) = username {
-        command.env("USERNAME", user);
-    }
-    if let Some(pass) = password {
-        command.env("PASSWORD", pass);
-    }
+    let status = tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(binary_path());
+        command
+            .arg("update")
+            .env("DATABASE_PATH", &db_path)
+            .env("TESTING_MODE", "true")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
 
-    let status = command.status().expect("failed to run update command");
+        if let Some(user) = username.as_deref() {
+            command.env("USERNAME", user);
+        }
+        if let Some(pass) = password.as_deref() {
+            command.env("PASSWORD", pass);
+        }
+
+        command.status()
+    })
+    .await
+    .expect("update command task panicked")
+    .expect("failed to run update command");
+
     assert!(
         status.success(),
         "update command failed with status {status}"
