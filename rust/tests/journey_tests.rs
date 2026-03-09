@@ -239,7 +239,9 @@ async fn ts_e2e_008_incremental_sync_with_updated_items() {
     run_update_cycle(&context).await;
 
     let all_items = get_json(&context, &format!("{API_V13}/items?type=3&id=0"), None).await;
-    let item_id = all_items["items"][0]["id"].as_i64().expect("missing item id");
+    let item_id = all_items["items"][0]["id"]
+        .as_i64()
+        .expect("missing item id");
     let baseline = all_items["items"][0]["lastModified"]
         .as_i64()
         .expect("missing lastModified");
@@ -261,7 +263,9 @@ async fn ts_e2e_009_star_and_unstar_item_v1_3() {
     run_update_cycle(&context).await;
 
     let all_items = get_json(&context, &format!("{API_V13}/items?type=3&id=0"), None).await;
-    let item_id = all_items["items"][0]["id"].as_i64().expect("missing item id");
+    let item_id = all_items["items"][0]["id"]
+        .as_i64()
+        .expect("missing item id");
 
     post_no_body_status(&context, &format!("{API_V13}/items/{item_id}/star"), None).await;
     let starred = get_json(&context, &format!("{API_V13}/items?type=2&id=0"), None).await;
@@ -315,7 +319,9 @@ async fn ts_e2e_011_rename_folder_keeps_feed_associations() {
         None,
     )
     .await;
-    let folder_id = folder["folders"][0]["id"].as_i64().expect("missing folder id");
+    let folder_id = folder["folders"][0]["id"]
+        .as_i64()
+        .expect("missing folder id");
 
     post_json(
         &context,
@@ -356,8 +362,12 @@ async fn ts_e2e_012_move_feed_between_folders() {
         None,
     )
     .await;
-    let folder_a_id = folder_a["folders"][0]["id"].as_i64().expect("missing folder id");
-    let folder_b_id = folder_b["folders"][0]["id"].as_i64().expect("missing folder id");
+    let folder_a_id = folder_a["folders"][0]["id"]
+        .as_i64()
+        .expect("missing folder id");
+    let folder_b_id = folder_b["folders"][0]["id"]
+        .as_i64()
+        .expect("missing folder id");
 
     let add = post_json(
         &context,
@@ -427,7 +437,9 @@ async fn ts_e2e_014_delete_folder_with_cascade() {
         None,
     )
     .await;
-    let folder_id = folder["folders"][0]["id"].as_i64().expect("missing folder id");
+    let folder_id = folder["folders"][0]["id"]
+        .as_i64()
+        .expect("missing folder id");
 
     for url in context.feed_urls.iter().take(2) {
         post_json(
@@ -492,7 +504,13 @@ async fn ts_e2e_016_auth_enforces_credentials_and_allows_update() {
     .await;
     assert_eq!(unauthorized, StatusCode::UNAUTHORIZED);
 
-    let authorized = add_feed(&context.client, &context.base_url, &context.feed_urls[0], auth_for(&context)).await;
+    let authorized = add_feed(
+        &context.client,
+        &context.base_url,
+        &context.feed_urls[0],
+        auth_for(&context),
+    )
+    .await;
     assert_eq!(authorized, StatusCode::OK);
 
     run_update_cycle(&context).await;
@@ -594,7 +612,8 @@ async fn ts_e2e_019_restart_with_persistent_database() {
     mark_all_feeds_due(&db_path).await;
     run_update_command(&db_path, None, None);
 
-    let feeds_before = get_json_from_client(&client, &base_url, &format!("{API_V13}/feeds"), None).await;
+    let feeds_before =
+        get_json_from_client(&client, &base_url, &format!("{API_V13}/feeds"), None).await;
     let count_before = feeds_before["feeds"].as_array().map_or(0, Vec::len);
 
     drop(server);
@@ -769,11 +788,7 @@ async fn post_json_status(
     if let Some((u, p)) = credentials {
         request = request.header("Authorization", basic_auth_value(u, p));
     }
-    request
-        .send()
-        .await
-        .expect("request failed")
-        .status()
+    request.send().await.expect("request failed").status()
 }
 
 async fn put_json_status(
@@ -791,11 +806,7 @@ async fn put_json_status(
     if let Some((u, p)) = credentials {
         request = request.header("Authorization", basic_auth_value(u, p));
     }
-    request
-        .send()
-        .await
-        .expect("request failed")
-        .status()
+    request.send().await.expect("request failed").status()
 }
 
 async fn post_no_body_status(
@@ -816,11 +827,7 @@ async fn delete_status(
     if let Some((u, p)) = credentials {
         request = request.header("Authorization", basic_auth_value(u, p));
     }
-    request
-        .send()
-        .await
-        .expect("request failed")
-        .status()
+    request.send().await.expect("request failed").status()
 }
 
 /// Starts the service binary in serve mode using an isolated test database.
@@ -871,7 +878,10 @@ fn run_update_command(db_path: &Path, username: Option<&str>, password: Option<&
     }
 
     let status = command.status().expect("failed to run update command");
-    assert!(status.success(), "update command failed with status {status}");
+    assert!(
+        status.success(),
+        "update command failed with status {status}"
+    );
 }
 
 /// Marks feeds as due so the update command processes them in the test run.
