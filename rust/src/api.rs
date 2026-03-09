@@ -279,7 +279,7 @@ async fn log_user_interaction(request: Request<Body>, next: Next) -> Response {
     let response = next.run(request).await;
     let duration_ms = started_at.elapsed().as_millis() as u64;
 
-    tracing::debug!(
+    tracing::info!(
         method = %method,
         uri = %uri,
         status = response.status().as_u16(),
