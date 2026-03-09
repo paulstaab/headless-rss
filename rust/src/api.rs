@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{net::IpAddr, str::FromStr};
 
@@ -12,6 +13,7 @@ use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use feed_rs::model::Entry;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
 use tokio::net::lookup_host;
@@ -710,6 +712,7 @@ async fn insert_article_from_entry(
         .as_ref()
         .and_then(|content| content.body.clone());
     let summary = entry.summary.as_ref().map(|s| s.content.clone());
+    let media_thumbnail = extract_first_image_url(content.as_deref().or(summary.as_deref()));
     let content_hash = content
         .as_ref()
         .map(|value| format!("{:x}", md5::compute(value.as_bytes())));
@@ -721,7 +724,7 @@ async fn insert_article_from_entry(
     let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
 
     sqlx::query(
-        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0, 0, 1, ?, ?, ?)",
+        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, 0, 1, ?, ?, ?)",
     )
     .bind(title)
     .bind(content)
@@ -731,6 +734,7 @@ async fn insert_article_from_entry(
     .bind(guid)
     .bind(guid_hash)
     .bind(now_ts)
+    .bind(media_thumbnail)
     .bind(published)
     .bind(updated)
     .bind(url)
@@ -740,6 +744,21 @@ async fn insert_article_from_entry(
     .map_err(internal_error)?;
 
     Ok(())
+}
+
+/// Extracts the first image source URL from HTML body content.
+fn extract_first_image_url(html_content: Option<&str>) -> Option<String> {
+    let html = html_content?;
+
+    static IMG_SRC_REGEX: OnceLock<Regex> = OnceLock::new();
+    let regex = IMG_SRC_REGEX.get_or_init(|| {
+        Regex::new(r#"(?is)<img[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"']"#)
+            .expect("valid image src regex")
+    });
+
+    regex
+        .captures(html)
+        .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
 
 async fn move_feed(
@@ -1553,7 +1572,7 @@ mod tests {
     <id>tag:example.org,2026:entry1</id>
     <updated>2026-03-06T00:00:00Z</updated>
     <summary>Entry summary</summary>
-    <content type="html">Entry content</content>
+        <content type="html"><![CDATA[<p>Entry content</p><img src="https://example.org/entry-thumb.jpg" alt="thumb" />]]></content>
   </entry>
 </feed>"#,
                 )
@@ -2595,6 +2614,46 @@ mod tests {
         assert_eq!(created_feed["updateErrorCount"], 0);
         assert!(created_feed["nextUpdateTime"].as_i64().is_some());
         assert_eq!(created_feed["folderId"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn add_feed_extracts_media_thumbnail_from_body_content() {
+        let feed_url = start_fixture_feed_server().await;
+        let pool = setup_pool().await;
+
+        let response = app(state(pool.clone()))
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/index.php/apps/news/api/v1-3/feeds")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"url":"{feed_url}","folderId":0}}"#,
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+
+        let created_feed_id: i64 = sqlx::query_scalar("SELECT id FROM feed WHERE url = ?")
+            .bind(&feed_url)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        let thumbnail: Option<String> =
+            sqlx::query_scalar("SELECT media_thumbnail FROM article WHERE feed_id = ? LIMIT 1")
+                .bind(created_feed_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert_eq!(
+            thumbnail.as_deref(),
+            Some("https://example.org/entry-thumb.jpg")
+        );
     }
 
     #[tokio::test]

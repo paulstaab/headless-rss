@@ -196,6 +196,7 @@ Source: `rust/src/api.rs`
 | TC-RUST-068 | Rust updated-items starred selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=2&id=0` with mixed starred items and modification times. | Returns only starred items where `lastModified >= ts`. |
 | TC-RUST-069 | Rust updated-items all selection threshold | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with mixed modification times. | Returns all items across feeds where `lastModified >= ts`. |
 | TC-RUST-070 | Rust updated-items all selection ordering | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with multiple matching IDs. | Returns matching items in descending item-ID order (`oldestFirst=false`). |
+| TC-RUST-071 | Rust feed ingest thumbnail fallback | Add a feed whose entry body HTML contains an `<img>` and no explicit feed thumbnail. | Inserted article stores `media_thumbnail` from the first body image URL. |
 
 ### Rust Migration Bootstrap Test Cases
 Source: `rust/src/db.rs`

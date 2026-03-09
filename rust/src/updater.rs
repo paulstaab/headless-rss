@@ -1,9 +1,11 @@
 use std::net::IpAddr;
 use std::str::FromStr;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use feed_rs::model::Entry;
+use regex::Regex;
 use sqlx::{FromRow, SqlitePool};
 use tokio::net::lookup_host;
 
@@ -127,6 +129,7 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
         .as_ref()
         .and_then(|content| content.body.clone());
     let summary = entry.summary.as_ref().map(|s| s.content.clone());
+    let media_thumbnail = extract_first_image_url(content.as_deref().or(summary.as_deref()));
     let content_hash = content
         .as_ref()
         .map(|value| format!("{:x}", md5::compute(value.as_bytes())));
@@ -138,7 +141,7 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
     let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
 
     sqlx::query(
-        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, NULL, ?, 0, 0, 1, ?, ?, ?)",
+        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, 0, 1, ?, ?, ?)",
     )
     .bind(title)
     .bind(content)
@@ -148,6 +151,7 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
     .bind(guid)
     .bind(guid_hash)
     .bind(now_ts)
+    .bind(media_thumbnail)
     .bind(published)
     .bind(updated)
     .bind(url)
@@ -157,6 +161,21 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
     .context("failed to insert article")?;
 
     Ok(true)
+}
+
+/// Extracts the first image source URL from HTML body content.
+fn extract_first_image_url(html_content: Option<&str>) -> Option<String> {
+    let html = html_content?;
+
+    static IMG_SRC_REGEX: OnceLock<Regex> = OnceLock::new();
+    let regex = IMG_SRC_REGEX.get_or_init(|| {
+        Regex::new(r#"(?is)<img[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"']"#)
+            .expect("valid image src regex")
+    });
+
+    regex
+        .captures(html)
+        .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
 
 fn unix_now() -> i64 {
@@ -274,6 +293,7 @@ mod tests {
     <id>tag:example.org,2026:update-entry</id>
     <updated>2026-03-06T00:00:00Z</updated>
     <summary>Update summary</summary>
+        <content type="html"><![CDATA[<p>Body</p><img src="https://example.org/thumb.jpg" alt="thumb" />]]></content>
   </entry>
 </feed>"#,
                 )
@@ -313,6 +333,27 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(err_count, 0);
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_extracts_media_thumbnail_from_entry_body() {
+        let pool = setup_pool().await;
+        let url = start_fixture_feed_server().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (4, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let thumbnail: Option<String> =
+            sqlx::query_scalar("SELECT media_thumbnail FROM article WHERE feed_id = 4 LIMIT 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(thumbnail.as_deref(), Some("https://example.org/thumb.jpg"));
     }
 
     #[tokio::test]
