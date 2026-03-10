@@ -22,6 +22,8 @@ const THIRTY_MINUTES: i64 = 1_800;
 const TWELVE_HOURS: i64 = 43_200;
 /// One day in seconds.
 const ONE_DAY: i64 = 86_400;
+/// Retention window for stale feed-article cleanup.
+const NINETY_DAYS: i64 = 90 * ONE_DAY;
 
 #[derive(FromRow)]
 struct FeedToUpdate {
@@ -138,12 +140,15 @@ async fn update_single_feed(
 
     let mut inserted = 0usize;
     let mut processed = 0usize;
+    let mut current_feed_guid_hashes = Vec::new();
     for entry in parsed.entries.iter().take(50) {
         processed += 1;
-        if insert_article_from_entry(pool, feed_id, entry).await? {
+        if insert_article_from_entry(pool, feed_id, entry, &mut current_feed_guid_hashes).await? {
             inserted += 1;
         }
     }
+
+    let removed = cleanup_stale_feed_articles(pool, feed_id, &current_feed_guid_hashes).await?;
 
     let now_ts = unix_now();
     let next_update_time = calculate_next_update_time(pool, feed_id, now_ts).await?;
@@ -162,9 +167,46 @@ async fn update_single_feed(
         processed,
         inserted,
         skipped,
+        removed,
         "feed update completed"
     );
     Ok(())
+}
+
+async fn cleanup_stale_feed_articles(
+    pool: &SqlitePool,
+    feed_id: i64,
+    current_feed_guid_hashes: &[String],
+) -> Result<u64> {
+    let stale_before = unix_now() - NINETY_DAYS;
+
+    let result = if current_feed_guid_hashes.is_empty() {
+        sqlx::query(
+            "DELETE FROM article WHERE feed_id = ? AND last_modified < ? AND unread = 0 AND starred = 0",
+        )
+        .bind(feed_id)
+        .bind(stale_before)
+        .execute(pool)
+        .await
+        .context("failed stale article cleanup query")?
+    } else {
+        let placeholders = vec!["?"; current_feed_guid_hashes.len()].join(", ");
+        let query = format!(
+            "DELETE FROM article WHERE feed_id = ? AND last_modified < ? AND unread = 0 AND starred = 0 AND guid_hash NOT IN ({placeholders})"
+        );
+
+        let mut cleanup_query = sqlx::query(&query).bind(feed_id).bind(stale_before);
+        for guid_hash in current_feed_guid_hashes {
+            cleanup_query = cleanup_query.bind(guid_hash);
+        }
+
+        cleanup_query
+            .execute(pool)
+            .await
+            .context("failed stale article cleanup query")?
+    };
+
+    Ok(result.rows_affected())
 }
 
 async fn calculate_next_update_time(pool: &SqlitePool, feed_id: i64, now_ts: i64) -> Result<i64> {
@@ -212,7 +254,12 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
     ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
 }
 
-async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entry) -> Result<bool> {
+async fn insert_article_from_entry(
+    pool: &SqlitePool,
+    feed_id: i64,
+    entry: &Entry,
+    current_feed_guid_hashes: &mut Vec<String>,
+) -> Result<bool> {
     let guid = if entry.id.is_empty() {
         entry
             .links
@@ -229,6 +276,7 @@ async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entr
     };
 
     let guid_hash = format!("{:x}", md5::compute(guid.as_bytes()));
+    current_feed_guid_hashes.push(guid_hash.clone());
     let existing: Option<i64> =
         sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
             .bind(&guid_hash)
@@ -311,7 +359,10 @@ mod tests {
     use sqlx::SqlitePool;
     use tokio::net::TcpListener;
 
-    use super::{ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now};
+    use super::{
+        NINETY_DAYS, ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval,
+        unix_now,
+    };
     use super::{update_all_regular_feeds, update_due_feeds};
 
     async fn setup_pool() -> SqlitePool {
@@ -595,5 +646,103 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(article_count, 1);
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_cleans_only_eligible_stale_articles() {
+        let pool = setup_pool().await;
+        let url = start_fixture_feed_server().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (7, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let now = unix_now();
+        let stale = now - (NINETY_DAYS + ONE_DAY);
+        let fresh = now - ONE_DAY;
+        let in_payload_guid = "tag:example.org,2026:update-entry";
+        let in_payload_hash = format!("{:x}", md5::compute(in_payload_guid.as_bytes()));
+
+        insert_test_article(&pool, 7, "stale-delete", stale, 0, 0).await;
+        insert_test_article(&pool, 7, "stale-unread", stale, 1, 0).await;
+        insert_test_article(&pool, 7, "stale-starred", stale, 0, 1).await;
+        insert_test_article(&pool, 7, "fresh-read-unstarred", fresh, 0, 0).await;
+        insert_test_article_with_hash(&pool, 7, in_payload_guid, &in_payload_hash, stale, 0, 0).await;
+
+        let updated = update_due_feeds(&pool, true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let deleted_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM article WHERE guid = 'stale-delete' LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+        assert!(deleted_exists.is_none());
+
+        let unread_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM article WHERE guid = 'stale-unread' LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+        assert!(unread_exists.is_some());
+
+        let starred_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM article WHERE guid = 'stale-starred' LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+        assert!(starred_exists.is_some());
+
+        let fresh_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM article WHERE guid = 'fresh-read-unstarred' LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
+        assert!(fresh_exists.is_some());
+
+        let in_payload_exists: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM article WHERE guid_hash = ? LIMIT 1",
+        )
+        .bind(in_payload_hash)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(in_payload_exists.is_some());
+    }
+
+    async fn insert_test_article(
+        pool: &SqlitePool,
+        feed_id: i64,
+        guid: &str,
+        last_modified: i64,
+        unread: i64,
+        starred: i64,
+    ) {
+        let guid_hash = format!("{:x}", md5::compute(guid.as_bytes()));
+        insert_test_article_with_hash(pool, feed_id, guid, &guid_hash, last_modified, unread, starred).await;
+    }
+
+    async fn insert_test_article_with_hash(
+        pool: &SqlitePool,
+        feed_id: i64,
+        guid: &str,
+        guid_hash: &str,
+        last_modified: i64,
+        unread: i64,
+        starred: i64,
+    ) {
+        sqlx::query(
+            "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (NULL, NULL, NULL, NULL, NULL, NULL, ?, NULL, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, NULL, NULL, NULL)",
+        )
+        .bind(feed_id)
+        .bind(guid)
+        .bind(guid_hash)
+        .bind(last_modified)
+        .bind(starred)
+        .bind(unread)
+        .execute(pool)
+        .await
+        .unwrap();
     }
 }

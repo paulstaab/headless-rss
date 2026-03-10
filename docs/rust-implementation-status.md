@@ -34,7 +34,7 @@ This document tracks Rust implementation progress against the technology-indepen
 | FEED-008 | Implemented | 7-day average + jitter + 12h cap implemented. |
 | FEED-009 | Implemented | `update_error_count` and `last_update_error` persisted on failures. |
 | FEED-010 | Implemented | Error state cleared on successful updates. |
-| FEED-011 | Not Started | Feed stale-article cleanup behavior not fully ported. |
+| FEED-011 | Implemented | Rust updater now removes stale feed articles only when missing from the latest payload, older than 90 days, read, and unstarred. |
 | FOL-001 | Implemented | Internal root folder bootstrap exists. |
 | FOL-002 | Implemented | Root folder omitted from folder listings. |
 | FOL-003 | Implemented | `folderId` root/null mapping implemented. |
