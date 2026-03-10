@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use feed_rs::model::Entry;
 use regex::Regex;
+use reqwest::header::{HeaderMap, HeaderValue};
 use sqlx::{FromRow, SqlitePool};
 use tokio::net::lookup_host;
 
@@ -84,7 +85,10 @@ async fn update_single_feed(
     tracing::debug!(feed_id, url, testing_mode, "starting feed update");
     validate_remote_url(url, testing_mode).await?;
 
-    let response = reqwest::get(url)
+    let client = build_feed_http_client()?;
+    let response = client
+        .get(url)
+        .send()
         .await
         .with_context(|| format!("request failed for {url}"))?;
     if !response.status().is_success() {
@@ -125,6 +129,33 @@ async fn update_single_feed(
         "feed update completed"
     );
     Ok(())
+}
+
+/// Builds an HTTP client with explicit request headers for feed fetching.
+///
+/// Some providers reject generic clients and require a browser-like user agent
+/// and explicit feed/content accept headers.
+fn build_feed_http_client() -> Result<reqwest::Client> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        reqwest::header::ACCEPT,
+        HeaderValue::from_static(
+            "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+        ),
+    );
+    headers.insert(
+        reqwest::header::ACCEPT_LANGUAGE,
+        HeaderValue::from_static("en-US,en;q=0.9"),
+    );
+
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .user_agent(
+            "Mozilla/5.0 (compatible; headless-rss/1.0; +https://github.com/paulstaab/headless-rss)",
+        )
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .context("failed to build feed http client")
 }
 
 async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entry) -> Result<bool> {
@@ -284,6 +315,7 @@ fn validate_ip_address(ip: IpAddr, allow_localhost: bool) -> Result<()> {
 mod tests {
     use axum::Router;
     use axum::http::header as http_header;
+    use axum::http::{HeaderMap as AxumHeaderMap, StatusCode};
     use axum::routing::get;
     use sqlx::SqlitePool;
     use tokio::net::TcpListener;
@@ -326,6 +358,56 @@ mod tests {
     <updated>2026-03-06T00:00:00Z</updated>
     <summary>Update summary</summary>
         <content type="html"><![CDATA[<p>Body</p><img src="https://example.org/thumb.jpg" alt="thumb" />]]></content>
+  </entry>
+</feed>"#,
+                )
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/atom.xml")
+    }
+
+    async fn start_fixture_feed_server_requiring_headers() -> String {
+        let app = Router::new().route(
+            "/atom.xml",
+            get(|headers: AxumHeaderMap| async move {
+                let user_agent_ok = headers
+                    .get(http_header::USER_AGENT)
+                    .and_then(|value| value.to_str().ok())
+                    .is_some_and(|value| {
+                        value.contains("headless-rss") || value.contains("Mozilla/5.0")
+                    });
+                let accept_ok = headers
+                    .get(http_header::ACCEPT)
+                    .and_then(|value| value.to_str().ok())
+                    .is_some_and(|value| {
+                        value.contains("application/rss+xml")
+                            || value.contains("application/atom+xml")
+                    });
+
+                if !(user_agent_ok && accept_ok) {
+                    return (StatusCode::FORBIDDEN, "blocked");
+                }
+
+                (
+                    StatusCode::OK,
+                    r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Updater Fixture</title>
+  <link href="http://example.org/" />
+  <updated>2026-03-06T00:00:00Z</updated>
+  <id>tag:example.org,2026:feed</id>
+  <entry>
+    <title>Header Guard Entry</title>
+    <link href="http://example.org/header-guard-entry" />
+    <id>tag:example.org,2026:header-guard-entry</id>
+    <updated>2026-03-06T00:00:00Z</updated>
+    <summary>Update summary</summary>
   </entry>
 </feed>"#,
                 )
@@ -386,6 +468,33 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(thumbnail.as_deref(), Some("https://example.org/thumb.jpg"));
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_sends_feed_headers() {
+        let pool = setup_pool().await;
+        let url = start_fixture_feed_server_requiring_headers().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (5, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let article_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM article WHERE feed_id = 5")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(article_count, 1);
+
+        let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 5")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(err_count, 0);
     }
 
     #[tokio::test]
