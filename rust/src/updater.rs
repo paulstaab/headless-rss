@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use feed_rs::model::Entry;
+use rand::Rng;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue};
 use sqlx::{FromRow, SqlitePool};
@@ -12,6 +13,17 @@ use tokio::net::lookup_host;
 
 use crate::config::Config;
 use crate::db;
+
+/// Jitter window (in seconds) used for low-activity feeds.
+///
+/// This spreads daily checks by +/-30 minutes so many feeds do not refresh at the same timestamp.
+const THIRTY_MINUTES: i64 = 1_800;
+/// Maximum interval for active feeds.
+///
+/// For active feeds we may compute shorter intervals, but never wait longer than 12 hours.
+const TWELVE_HOURS: i64 = 43_200;
+/// One day in seconds.
+const ONE_DAY: i64 = 86_400;
 
 #[derive(FromRow)]
 struct FeedToUpdate {
@@ -111,10 +123,11 @@ async fn update_single_feed(
     }
 
     let now_ts = unix_now();
+    let next_update_time = calculate_next_update_time(pool, feed_id, now_ts).await?;
     sqlx::query(
         "UPDATE feed SET update_error_count = 0, last_update_error = NULL, next_update_time = ? WHERE id = ?",
     )
-    .bind(now_ts + 86_400)
+    .bind(next_update_time)
     .bind(feed_id)
     .execute(pool)
     .await
@@ -129,6 +142,51 @@ async fn update_single_feed(
         "feed update completed"
     );
     Ok(())
+}
+
+async fn calculate_next_update_time(pool: &SqlitePool, feed_id: i64, now_ts: i64) -> Result<i64> {
+    // Derive cadence from recent output over the last 7 days.
+    let weekly_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM article WHERE feed_id = ? AND pub_date > ?",
+    )
+    .bind(feed_id)
+    .bind(now_ts - 7 * ONE_DAY)
+    .fetch_one(pool)
+    .await
+    .context("failed to query recent article frequency")?;
+
+    let avg_articles_per_day = weekly_count as f64 / 7.0;
+    let next_update_in = compute_next_update_interval(avg_articles_per_day, random_jitter_seconds());
+
+    tracing::info!(
+        feed_id,
+        avg_articles_per_day,
+        next_update_in_minutes = (next_update_in as f64 / 60.0),
+        "calculated next dynamic update time"
+    );
+
+    Ok(now_ts + next_update_in)
+}
+
+/// Returns a signed jitter value in seconds in [-30m, +30m].
+///
+/// This is only applied to sparse feeds to avoid synchronized daily polling.
+fn random_jitter_seconds() -> i64 {
+    let mut rng = rand::rng();
+    rng.random_range(-THIRTY_MINUTES..=THIRTY_MINUTES)
+}
+
+/// Computes the next refresh interval in seconds from recent publishing frequency.
+///
+/// Policy (kept in sync with Python implementation):
+/// - Sparse feeds ($\le 0.1$ articles/day): refresh roughly daily with +/-30m jitter.
+/// - Active feeds: refresh at 4x observed daily rate, capped so interval is at most 12h.
+fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) -> i64 {
+    if avg_articles_per_day <= 0.1 {
+        return ONE_DAY + jitter_seconds.clamp(-THIRTY_MINUTES, THIRTY_MINUTES);
+    }
+
+    ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
 }
 
 /// Builds an HTTP client with explicit request headers for feed fetching.
@@ -321,6 +379,7 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::update_due_feeds;
+    use super::{ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now};
 
     async fn setup_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -432,7 +491,9 @@ mod tests {
             .await
             .unwrap();
 
+        let now_before = unix_now();
         let updated = update_due_feeds(&pool, true).await.unwrap();
+        let now_after = unix_now();
         assert_eq!(updated, 1);
 
         let article_count: i64 =
@@ -447,6 +508,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(err_count, 0);
+
+        let next_update_time: i64 =
+            sqlx::query_scalar("SELECT next_update_time FROM feed WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let min_expected = now_before + TWELVE_HOURS - 2;
+        let max_expected = now_after + TWELVE_HOURS + 2;
+        assert!(
+            (min_expected..=max_expected).contains(&next_update_time),
+            "next_update_time={next_update_time}, expected range [{min_expected}, {max_expected}]"
+        );
+    }
+
+    #[test]
+    fn compute_next_update_interval_daily_when_feed_is_sparse() {
+        let with_negative_jitter = compute_next_update_interval(0.1, -THIRTY_MINUTES);
+        let with_positive_jitter = compute_next_update_interval(0.0, THIRTY_MINUTES);
+
+        assert_eq!(with_negative_jitter, ONE_DAY - THIRTY_MINUTES);
+        assert_eq!(with_positive_jitter, ONE_DAY + THIRTY_MINUTES);
+    }
+
+    #[test]
+    fn compute_next_update_interval_uses_cap_for_recent_activity() {
+        let interval = compute_next_update_interval(1.0 / 7.0, 0);
+        assert_eq!(interval, TWELVE_HOURS);
+    }
+
+    #[test]
+    fn compute_next_update_interval_scales_with_high_activity() {
+        let interval = compute_next_update_interval(10.0, 0);
+        assert_eq!(interval, 2_160);
     }
 
     #[tokio::test]
