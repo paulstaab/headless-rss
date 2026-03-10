@@ -10,6 +10,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     cargo build --manifest-path /app/rust/Cargo.toml --release
 
+# Ensure we do not accidentally publish the dependency-cache warmup stub binary.
+RUN /app/rust/target/release/headless-rss-rs --help | grep -q "headless-rss-rs"
+
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 libssl3 \
