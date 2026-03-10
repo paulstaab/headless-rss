@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS article (
     pub_date INTEGER,
     rtl BOOLEAN NOT NULL DEFAULT 0,
     starred BOOLEAN NOT NULL DEFAULT 0,
-    unread BOOLEAN NOT NULL DEFAULT 1,
+    unread BOOLEAN NOT NULL DEFAULT 0,
     updated_date INTEGER,
     url VARCHAR,
     FOREIGN KEY(feed_id) REFERENCES feed(id)
@@ -61,3 +61,9 @@ CREATE TABLE IF NOT EXISTS email_credentials (
 INSERT INTO folder (id, name, is_root)
 SELECT 0, '', 1
 WHERE NOT EXISTS (SELECT 1 FROM folder WHERE id = 0);
+
+UPDATE folder SET is_root = 1 WHERE id = 0;
+UPDATE feed SET folder_id = 0 WHERE folder_id IS NULL;
+
+DELETE FROM article
+WHERE feed_id NOT IN (SELECT id FROM feed);
