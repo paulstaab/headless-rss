@@ -2,7 +2,7 @@
 
 ## Snapshot
 - Migration target: Rust reimplementation of `headless-rss` with SQLite compatibility and Nextcloud News API parity.
-- Stack decisions are documented in `docs/techstack.md`.
+- Stack decisions are documented in `docs/rust-techstack.md`.
 - Current Rust workspace location: `rust/`.
 - Current Rust test status: `cargo test` passes (`67 passed, 0 failed`).
 
@@ -179,7 +179,7 @@
   - `README.md`
   - `docs/requirements.md`
   - `docs/test-cases.md`
-  - `docs/techstack.md`
+  - `docs/rust-techstack.md`
   - all new files under `rust/`
 - `.github/copilot-instructions.md` is also modified in the worktree and was treated as pre-existing/unrelated during migration work.
 

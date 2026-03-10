@@ -1,171 +1,128 @@
-# Implemented Requirements Baseline
+# Requirements Baseline
 
 ## Purpose
-This document captures requirements that are currently implemented in the codebase.
+This document defines the product requirements independent of implementation language.
+The same requirements apply to all implementations.
 
-## API Contracts
-API requirements are specified in separate contract documents:
-- `docs/api-service-contract.md`
-- `docs/api-nextcloud-v1-2-contract.md`
-- `docs/api-nextcloud-v1-3-contract.md`
+Implementation progress is tracked separately in `docs/rust-implementation-status.md`.
 
-## Test Cases
-Test cases are specified in separate documents:
-- `docs/test-cases.md`
-- `docs/api-service-test-cases.md`
-- `docs/api-nextcloud-v1-2-test-cases.md`
-- `docs/api-nextcloud-v1-3-test-cases.md`
+## Related Contracts And Tests
+- API contracts:
+  - `docs/api-service-contract.md`
+  - `docs/api-nextcloud-v1-2-contract.md`
+  - `docs/api-nextcloud-v1-3-contract.md`
+- Test case catalogs:
+  - `docs/test-cases.md`
+  - `docs/api-service-test-cases.md`
+  - `docs/api-nextcloud-v1-2-test-cases.md`
+  - `docs/api-nextcloud-v1-3-test-cases.md`
 
-## Functional Requirements
+## Requirement IDs
+- IDs are stable and unique.
+- Prefixes indicate domain:
+  - `DEL-*`: delivery
+  - `SRV-*`: service runtime
+  - `API-*`: API compatibility
+  - `FEED-*`: feed lifecycle and refresh
+  - `FOL-*`: folder behavior
+  - `ITEM-*`: item/article behavior
+  - `CNT-*`: content extraction and summarization
+  - `EML-*`: email/newsletter ingestion
+  - `SEC-*`: security
+  - `CFG-*`: configuration
+  - `CLI-*`: command-line behavior
+  - `DAT-*`: persistence model and constraints
 
-### Delivery Requirements
-- The application shall be delivered as a single, self-contained Docker container image suitable for self-hosted deployment.
+## Requirements
 
-### Service Startup and Runtime
-- On startup, the service shall initialize persistent storage connectivity.
-- On startup, the service shall trigger a feed update cycle.
-- The service shall periodically execute feed updates using a configurable interval (`FEED_UPDATE_FREQUENCY_MIN`, default `15`).
+### Delivery
+- `DEL-001`: The application shall be deliverable as a single self-hosted container image.
 
-### Feed Aggregation
-- The system shall parse and ingest Atom and RSS feeds.
-- The system shall reject duplicate feed URLs.
-- The system shall reject feed creation for non-existent folders.
-- The system shall support deleting feeds and all associated articles.
-- The system shall support moving feeds between folders.
-- The system shall support renaming feeds.
-- The system shall compute and persist a dynamic `next_update_time` based on recent publishing frequency.
-- The system shall persist feed update errors (`update_error_count`, `last_update_error`) and clear error state after successful updates.
-- The system shall remove stale feed articles that are not in the latest feed payload when they are older than 90 days, read, and unstarred.
+### Service Runtime
+- `SRV-001`: On startup, the service shall initialize persistent storage connectivity.
+- `SRV-002`: On startup, the service shall execute a feed refresh cycle.
+- `SRV-003`: Startup refresh shall process all non-mailing-list feeds regardless of previous schedule.
+- `SRV-004`: The service shall execute periodic feed refresh cycles based on `FEED_UPDATE_FREQUENCY_MIN`.
 
-### Folder Management
-- The system shall maintain an internal root folder and create it on demand if missing.
-- The system shall hide the root folder from folder listing APIs.
-- The system shall support creating, renaming, listing, and deleting user folders.
-- The system shall reject empty folder names.
-- The system shall reject duplicate folder names.
-- Deleting a folder shall delete feeds assigned to that folder.
+### API Compatibility
+- `API-001`: The service shall expose health and version endpoints as defined in API contract documents.
+- `API-002`: The service shall preserve Nextcloud News API compatibility for v1-2 and v1-3 contracts.
+- `API-003`: API payload field naming shall preserve contract casing (including camelCase fields).
 
-### Article and Item Behavior
-- The system shall persist articles with GUID and GUID hash identifiers.
-- The system shall prevent duplicate article insertion using GUID hash.
-- Newly inserted articles shall default to unread unless explicitly marked otherwise.
-- The system shall provide item retrieval filtered by feed, folder, starred, or all items.
-- The system shall support item retrieval filtered by `last_modified`.
-- The system shall support read/unread and star/unstar state transitions for single and bulk operations.
-- The system shall update `last_modified` when article read/star state changes.
-- The system shall support marking items read up to a provided newest item ID at feed, folder, and global levels.
+### Feed Lifecycle And Refresh
+- `FEED-001`: The system shall parse and ingest both RSS and Atom feeds.
+- `FEED-002`: Feed URLs shall be unique; duplicate feed creation shall be rejected.
+- `FEED-003`: Feed creation shall reject non-existent target folders.
+- `FEED-004`: Deleting a feed shall delete associated articles.
+- `FEED-005`: The system shall support moving feeds between folders.
+- `FEED-006`: The system shall support renaming feeds.
+- `FEED-007`: Refresh scheduling shall persist `next_update_time` dynamically from recent publishing frequency.
+- `FEED-008`: Dynamic scheduling algorithm shall:
+  - use a 7-day average articles/day,
+  - schedule sparse feeds (`<= 0.1/day`) at daily cadence with jitter of +/-30 minutes,
+  - schedule active feeds at 4x observed daily frequency,
+  - cap active-feed interval to at most 12 hours.
+- `FEED-009`: Refresh failures shall increment `update_error_count` and persist `last_update_error`.
+- `FEED-010`: Successful refresh shall clear persisted refresh error state.
+- `FEED-011`: Stale feed articles not present in the latest payload shall be eligible for cleanup only when older than 90 days, read, and unstarred.
 
-### Content Extraction and Summarization
-- The system shall extract first-image URLs from HTML content when no feed thumbnail is available.
-- The system shall support optional full-text extraction from article URLs.
-- The system shall evaluate feed quality periodically (roughly monthly) and decide whether to use extracted full text.
-- The system shall mark `use_llm_summary` only when full-text extraction quality is considered sufficient.
-- The system shall support optional LLM-generated summaries when `OPENAI_API_KEY` is configured.
-- LLM summaries shall be appended with `" (AI generated)"`.
-- If LLM summarization is not used and content is long, summaries shall fall back to truncated content.
+### Folder Behavior
+- `FOL-001`: The system shall maintain an internal root folder and create it on demand if missing.
+- `FOL-002`: Root folder shall be omitted from folder listing responses.
+- `FOL-003`: `folderId: null` and `folderId: 0` shall map to root folder semantics where applicable.
+- `FOL-004`: The system shall support creating, renaming, listing, and deleting user folders.
+- `FOL-005`: Empty folder names shall be rejected.
+- `FOL-006`: Duplicate folder names shall be rejected.
+- `FOL-007`: Deleting a folder shall delete feeds in that folder.
 
-### Email Newsletter Integration
-- The system shall store IMAP credentials via CLI/API-internal calls.
-- Adding IMAP credentials shall validate connectivity/login before persisting credentials.
-- The system shall fetch unread emails from configured IMAP inboxes during update cycles.
-- Only emails identified as mailing list messages (`List-Unsubscribe` header) shall be processed as newsletter content.
-- The system shall create mailing-list feeds automatically when first encountering a sender.
-- Newsletter HTML shall be cleaned before article creation.
-- When LLM is enabled, newsletter parsing shall support:
-  - Single-article extraction mode.
-  - Multi-item splitting mode with up to 25 generated items.
-- The system shall clean up stale newsletter articles older than 90 days only when they are read and unstarred.
+### Item And Article Behavior
+- `ITEM-001`: Articles shall persist stable GUID and GUID-hash identifiers.
+- `ITEM-002`: Duplicate article insertion shall be prevented by GUID-hash de-duplication.
+- `ITEM-003`: Newly inserted articles shall default to unread unless explicitly set otherwise.
+- `ITEM-004`: Item retrieval shall support feed, folder, starred, and global selection modes.
+- `ITEM-005`: Item retrieval shall support `last_modified` filtering.
+- `ITEM-006`: Single and bulk read/unread operations shall be supported.
+- `ITEM-007`: Single and bulk star/unstar operations shall be supported.
+- `ITEM-008`: Read/star state changes shall update `last_modified`.
+- `ITEM-009`: Mark-as-read operations shall support boundary behavior using newest item ID for feed, folder, and global scopes.
 
-### Security and Safety
-- The system shall implement URL validation to reduce SSRF risk for feed/article fetches.
-- URL validation shall allow only `http` and `https` schemes.
-- URL validation shall block loopback, private, link-local, unspecified, multicast, and cloud metadata addresses.
-- Localhost access may be allowed in testing mode.
-- HTTP Basic auth enforcement shall be conditional on `USERNAME` and `PASSWORD` configuration.
+### Content Extraction And Summarization
+- `CNT-001`: If feed metadata does not provide a thumbnail, the system shall extract the first image URL from HTML content when available.
+- `CNT-002`: The system shall support optional full-text extraction from article URLs.
+- `CNT-003`: Feed content quality evaluation shall run periodically (about monthly) and decide whether extracted full text should be used.
+- `CNT-004`: `use_llm_summary` shall only be enabled when full-text extraction quality is sufficient.
+- `CNT-005`: Optional LLM-generated summaries shall be supported when `OPENAI_API_KEY` is configured.
+- `CNT-006`: LLM-generated summaries shall include the suffix ` (AI generated)`.
+- `CNT-007`: If LLM summarization is disabled and content is long, summary generation shall fall back to truncation.
 
-### Configuration and Environment
-- The system shall read runtime configuration from environment variables.
-- Supported environment variables shall include:
-  - `USERNAME`, `PASSWORD`
-  - `FEED_UPDATE_FREQUENCY_MIN`
-  - `VERSION`
-  - `OPENAI_API_KEY`, `OPENAI_MODEL`
-- Default values shall include:
-  - version: `dev`
-  - update frequency: `15` minutes
-  - OpenAI model: `gpt-5-mini`
+### Email Newsletter Ingestion
+- `EML-001`: The system shall store IMAP credentials via CLI/API-internal paths.
+- `EML-002`: Credential persistence shall require successful mailbox connectivity/login validation.
+- `EML-003`: Update cycles shall fetch unread emails from configured mailboxes.
+- `EML-004`: Only messages identified as mailing-list emails (for example via `List-Unsubscribe`) shall be treated as newsletters.
+- `EML-005`: Mailing-list feeds shall be auto-created on first encounter of a sender.
+- `EML-006`: Newsletter HTML shall be cleaned before article persistence.
+- `EML-007`: When LLM support is enabled, newsletter parsing shall support single-article mode and multi-item mode (up to 25 items).
+- `EML-008`: Stale newsletter entries shall be eligible for cleanup only when older than 90 days, read, and unstarred.
 
-### CLI Requirements
-- The CLI shall provide an `update` command that initializes persistent storage access and runs feed updates.
-- The CLI shall provide an `add-email-credentials` command with required server, port, username, and password options.
-- `add-email-credentials` shall report a user-facing error if credential validation fails.
+### Security
+- `SEC-001`: Remote URL validation shall allow only `http` and `https` schemes.
+- `SEC-002`: Remote URL validation shall block loopback, private, link-local, unspecified, multicast, and cloud metadata addresses.
+- `SEC-003`: Localhost access may be allowed only in testing mode.
+- `SEC-004`: The same URL validation policy shall be applied consistently in all remote-fetch paths.
+- `SEC-005`: HTTP Basic auth shall be enforced only when both `USERNAME` and `PASSWORD` are configured.
 
-## Data and Persistence Requirements
-- Database entities shall include `Feed`, `Folder`, `Article`, and `EmailCredential`.
-- Feed URLs shall be unique.
-- Folder names shall be unique.
+### Configuration
+- `CFG-001`: Runtime configuration shall be sourced from environment variables.
+- `CFG-002`: Supported variables shall include `USERNAME`, `PASSWORD`, `FEED_UPDATE_FREQUENCY_MIN`, `VERSION`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+- `CFG-003`: Defaults shall include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, and `OPENAI_MODEL=gpt-5-mini`.
 
-## Rust Reimplementation Progress
-- A Rust implementation workspace exists under `rust/` using `axum`, `tokio`, and `sqlx` with SQLite.
-- The Rust server shall expose:
-  - `/status`
-  - `/index.php/apps/news/api/v1-2/version`
-  - `/index.php/apps/news/api/v1-3/version`
-  - `/index.php/apps/news/api/v1-2/feeds`
-  - `/index.php/apps/news/api/v1-3/feeds`
-  - `/index.php/apps/news/api/v1-2/folders`
-  - `/index.php/apps/news/api/v1-3/folders`
-  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}` (`DELETE`)
-  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}` (`DELETE`)
-  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}/move` (`PUT`)
-  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}/move` (`POST`)
-  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` (`PUT`)
-  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}/rename` (`POST`)
-  - `/index.php/apps/news/api/v1-2/feeds/{feed_id}/read` (`PUT`)
-  - `/index.php/apps/news/api/v1-3/feeds/{feed_id}/read` (`POST`)
-  - `/index.php/apps/news/api/v1-2/folders/{folder_id}` (`DELETE`, `PUT`)
-  - `/index.php/apps/news/api/v1-3/folders/{folder_id}` (`DELETE`, `PUT`)
-  - `/index.php/apps/news/api/v1-2/folders/{folder_id}/read` (`POST`)
-  - `/index.php/apps/news/api/v1-3/folders/{folder_id}/read` (`POST`)
-  - `/index.php/apps/news/api/v1-2/items` (read-only)
-  - `/index.php/apps/news/api/v1-3/items` (read-only)
-  - `/index.php/apps/news/api/v1-2/items/updated` (read-only)
-  - `/index.php/apps/news/api/v1-3/items/updated` (read-only)
-  - `/index.php/apps/news/api/v1-2/items/{item_id}/content` (read-only)
-  - `/index.php/apps/news/api/v1-3/items/{item_id}/content` (read-only)
-  - `/index.php/apps/news/api/v1-2/items/{item_id}/read`
-  - `/index.php/apps/news/api/v1-2/items/read/multiple`
-  - `/index.php/apps/news/api/v1-2/items/{item_id}/unread`
-  - `/index.php/apps/news/api/v1-2/items/unread/multiple`
-  - `/index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star`
-  - `/index.php/apps/news/api/v1-2/items/star/multiple`
-  - `/index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/unstar`
-  - `/index.php/apps/news/api/v1-2/items/unstar/multiple`
-  - `/index.php/apps/news/api/v1-2/items/read`
-  - `/index.php/apps/news/api/v1-3/items/{item_id}/read`
-  - `/index.php/apps/news/api/v1-3/items/read/multiple`
-  - `/index.php/apps/news/api/v1-3/items/{item_id}/unread`
-  - `/index.php/apps/news/api/v1-3/items/unread/multiple`
-  - `/index.php/apps/news/api/v1-3/items/{item_id}/star`
-  - `/index.php/apps/news/api/v1-3/items/star/multiple`
-  - `/index.php/apps/news/api/v1-3/items/{item_id}/unstar`
-  - `/index.php/apps/news/api/v1-3/items/unstar/multiple`
-  - `/index.php/apps/news/api/v1-3/items/read`
-- Rust feed responses shall preserve camelCase fields and map root folder IDs to `folderId: null`.
-- Rust folder responses shall omit the internal root folder.
-- Rust auth behavior shall match current API behavior for protected endpoints when `USERNAME` and `PASSWORD` are both set.
-- Rust default database path handling shall support running from repository root and from `rust/`.
-- Rust feed creation shall validate remote URLs with SSRF protections:
-  - only `http` and `https` schemes allowed
-  - block loopback, private, link-local, unspecified, multicast, and metadata service addresses
-  - allow localhost only in testing mode (`TESTING_MODE=true` in Rust env)
-- Rust API and updater feed fetch paths shall share one SSRF validation module to keep protections consistent.
-- Rust API and updater feed fetches shall use a configured `reqwest::Client` with explicit connection/read/overall timeouts.
-- Rust CLI `update` command shall execute a feed update cycle for due non-mailing-list feeds (`next_update_time` is null or in the past and `is_mailing_list = false`), insert new articles by guid-hash de-duplication, and persist feed update errors (`update_error_count`, `last_update_error`) on failures.
-- Rust dynamic feed refresh scheduling shall mirror Python logic: compute average articles/day over the last 7 days, schedule sparse feeds (<= 0.1/day) once daily with +/-30 minute jitter, and schedule active feeds at 4x average frequency capped to at least every 12 hours.
-- Rust feed ingestion shall extract `media_thumbnail` from the first `<img src="...">` in entry body HTML when the feed does not provide an explicit thumbnail.
-- Rust `serve` command shall force a startup update cycle for all non-mailing-list feeds (ignoring `next_update_time`) and continue periodic due-feed updates based on `FEED_UPDATE_FREQUENCY_MIN`.
-- Rust CLI `add-email-credentials` command shall validate IMAP connectivity/login before persisting credentials into `email_credentials`.
-- Rust API version routing shall be separated into version-specific source files for maintainability (`rust/src/api/v1_2.rs` and `rust/src/api/v1_3.rs`).
-- Rust shall apply SQLx-managed schema migrations automatically during database pool initialization (`rust/src/db.rs`) so Rust runtime/CLI commands can bootstrap schema on first run.
-- Rust migration baseline shall include tables and compatibility data bootstrap for `folder`, `feed`, `article`, and `email_credentials`, including ensuring root folder `id=0` exists.
+### CLI
+- `CLI-001`: A CLI `update` command shall initialize persistent storage access and execute a refresh cycle.
+- `CLI-002`: A CLI `add-email-credentials` command shall require server, port, username, and password inputs.
+- `CLI-003`: `add-email-credentials` shall return a user-visible error when credential validation fails.
+
+### Data Model And Constraints
+- `DAT-001`: Persistence shall include `Feed`, `Folder`, `Article`, and `EmailCredential` entities.
+- `DAT-002`: Feed URL uniqueness shall be enforced.
+- `DAT-003`: Folder name uniqueness shall be enforced.
