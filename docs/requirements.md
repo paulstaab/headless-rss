@@ -161,7 +161,7 @@ Test cases are specified in separate documents:
 - Rust CLI `update` command shall execute a feed update cycle for due non-mailing-list feeds (`next_update_time` is null or in the past and `is_mailing_list = false`), insert new articles by guid-hash de-duplication, and persist feed update errors (`update_error_count`, `last_update_error`) on failures.
 - Rust dynamic feed refresh scheduling shall mirror Python logic: compute average articles/day over the last 7 days, schedule sparse feeds (<= 0.1/day) once daily with +/-30 minute jitter, and schedule active feeds at 4x average frequency capped to at least every 12 hours.
 - Rust feed ingestion shall extract `media_thumbnail` from the first `<img src="...">` in entry body HTML when the feed does not provide an explicit thumbnail.
-- Rust `serve` command shall trigger a startup update cycle and continue periodic due-feed updates based on `FEED_UPDATE_FREQUENCY_MIN`.
+- Rust `serve` command shall force a startup update cycle for all non-mailing-list feeds (ignoring `next_update_time`) and continue periodic due-feed updates based on `FEED_UPDATE_FREQUENCY_MIN`.
 - Rust CLI `add-email-credentials` command shall validate IMAP connectivity/login before persisting credentials into `email_credentials`.
 - Rust API version routing shall be separated into version-specific source files for maintainability (`rust/src/api/v1_2.rs` and `rust/src/api/v1_3.rs`).
 - Rust shall apply SQLx-managed schema migrations automatically during database pool initialization (`rust/src/db.rs`) so Rust runtime/CLI commands can bootstrap schema on first run.

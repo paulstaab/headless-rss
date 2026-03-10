@@ -51,9 +51,30 @@ pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<u
     .await
     .context("failed to query due feeds")?;
 
+    update_feed_batch(pool, testing_mode, feeds, "due").await
+}
+
+pub async fn update_all_regular_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<usize> {
+    let feeds: Vec<FeedToUpdate> =
+        sqlx::query_as("SELECT id, url FROM feed WHERE is_mailing_list = 0")
+            .fetch_all(pool)
+            .await
+            .context("failed to query all regular feeds")?;
+
+    update_feed_batch(pool, testing_mode, feeds, "all").await
+}
+
+async fn update_feed_batch(
+    pool: &SqlitePool,
+    testing_mode: bool,
+    feeds: Vec<FeedToUpdate>,
+    batch_kind: &str,
+) -> Result<usize> {
+
     tracing::debug!(
         due_feeds = feeds.len(),
         testing_mode,
+        batch_kind,
         "loaded due feeds for update"
     );
 
@@ -82,6 +103,7 @@ pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<u
         due_feeds = feeds.len(),
         succeeded,
         failed,
+        batch_kind,
         "feed update batch summary"
     );
 
@@ -378,7 +400,7 @@ mod tests {
     use sqlx::SqlitePool;
     use tokio::net::TcpListener;
 
-    use super::update_due_feeds;
+    use super::{update_all_regular_feeds, update_due_feeds};
     use super::{ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now};
 
     async fn setup_pool() -> SqlitePool {
@@ -641,5 +663,26 @@ mod tests {
                 .unwrap();
         assert_eq!(err_count, 0);
         assert_eq!(err_detail, None);
+    }
+
+    #[tokio::test]
+    async fn update_all_regular_feeds_ignores_next_update_time_gate() {
+        let pool = setup_pool().await;
+        let url = start_fixture_feed_server().await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (6, ?, 'Updater Fixture', NULL, 1, 9999999999, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_all_regular_feeds(&pool, true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let article_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM article WHERE feed_id = 6")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(article_count, 1);
     }
 }

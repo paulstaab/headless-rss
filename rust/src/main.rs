@@ -99,8 +99,8 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
     let scheduler_testing_mode = config.testing_mode;
     let scheduler_interval = Duration::from_secs((config.feed_update_frequency_min as u64) * 60);
     tokio::spawn(async move {
-        if let Err(err) = updater::update_due_feeds(&scheduler_pool, scheduler_testing_mode).await {
-            tracing::warn!(error = %err, "startup feed update cycle failed");
+        if let Err(err) = updater::update_all_regular_feeds(&scheduler_pool, scheduler_testing_mode).await {
+            tracing::warn!(error = %err, "startup forced feed update cycle failed");
         }
 
         loop {
