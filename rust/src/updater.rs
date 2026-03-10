@@ -1,5 +1,3 @@
-use std::net::IpAddr;
-use std::str::FromStr;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -7,12 +5,12 @@ use anyhow::{Context, Result};
 use feed_rs::model::Entry;
 use rand::Rng;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue};
 use sqlx::{FromRow, SqlitePool};
-use tokio::net::lookup_host;
 
 use crate::config::Config;
 use crate::db;
+use crate::http_client;
+use crate::ssrf;
 
 /// Jitter window (in seconds) used for low-activity feeds.
 ///
@@ -70,6 +68,7 @@ async fn update_feed_batch(
     feeds: Vec<FeedToUpdate>,
     batch_kind: &str,
 ) -> Result<usize> {
+    let feed_http_client = http_client::build_feed_http_client()?;
 
     tracing::debug!(
         due_feeds = feeds.len(),
@@ -82,7 +81,9 @@ async fn update_feed_batch(
     let mut failed = 0usize;
 
     for feed in &feeds {
-        if let Err(err) = update_single_feed(pool, feed.id, &feed.url, testing_mode).await {
+        if let Err(err) =
+            update_single_feed(pool, &feed_http_client, feed.id, &feed.url, testing_mode).await
+        {
             let detail = err.to_string();
             tracing::warn!(feed_id = feed.id, error = %detail, "feed update failed");
             sqlx::query(
@@ -112,15 +113,15 @@ async fn update_feed_batch(
 
 async fn update_single_feed(
     pool: &SqlitePool,
+    feed_http_client: &reqwest::Client,
     feed_id: i64,
     url: &str,
     testing_mode: bool,
 ) -> Result<()> {
     tracing::debug!(feed_id, url, testing_mode, "starting feed update");
-    validate_remote_url(url, testing_mode).await?;
+    ssrf::validate_remote_url(url, testing_mode).await?;
 
-    let client = build_feed_http_client()?;
-    let response = client
+    let response = feed_http_client
         .get(url)
         .send()
         .await
@@ -168,17 +169,17 @@ async fn update_single_feed(
 
 async fn calculate_next_update_time(pool: &SqlitePool, feed_id: i64, now_ts: i64) -> Result<i64> {
     // Derive cadence from recent output over the last 7 days.
-    let weekly_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM article WHERE feed_id = ? AND pub_date > ?",
-    )
-    .bind(feed_id)
-    .bind(now_ts - 7 * ONE_DAY)
-    .fetch_one(pool)
-    .await
-    .context("failed to query recent article frequency")?;
+    let weekly_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM article WHERE feed_id = ? AND pub_date > ?")
+            .bind(feed_id)
+            .bind(now_ts - 7 * ONE_DAY)
+            .fetch_one(pool)
+            .await
+            .context("failed to query recent article frequency")?;
 
     let avg_articles_per_day = weekly_count as f64 / 7.0;
-    let next_update_in = compute_next_update_interval(avg_articles_per_day, random_jitter_seconds());
+    let next_update_in =
+        compute_next_update_interval(avg_articles_per_day, random_jitter_seconds());
 
     tracing::info!(
         feed_id,
@@ -209,33 +210,6 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
     }
 
     ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
-}
-
-/// Builds an HTTP client with explicit request headers for feed fetching.
-///
-/// Some providers reject generic clients and require a browser-like user agent
-/// and explicit feed/content accept headers.
-fn build_feed_http_client() -> Result<reqwest::Client> {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        reqwest::header::ACCEPT,
-        HeaderValue::from_static(
-            "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-        ),
-    );
-    headers.insert(
-        reqwest::header::ACCEPT_LANGUAGE,
-        HeaderValue::from_static("en-US,en;q=0.9"),
-    );
-
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .user_agent(
-            "Mozilla/5.0 (compatible; headless-rss/1.0; +https://github.com/paulstaab/headless-rss)",
-        )
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .context("failed to build feed http client")
 }
 
 async fn insert_article_from_entry(pool: &SqlitePool, feed_id: i64, entry: &Entry) -> Result<bool> {
@@ -328,69 +302,6 @@ fn unix_now() -> i64 {
         .unwrap_or_default()
 }
 
-async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<()> {
-    let parsed = reqwest::Url::parse(url).context("invalid url")?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        anyhow::bail!(
-            "URL scheme '{}' is not allowed. Only http and https are permitted.",
-            parsed.scheme()
-        );
-    }
-
-    let Some(hostname) = parsed.host_str() else {
-        anyhow::bail!("URL must have a valid hostname.");
-    };
-
-    if !allow_localhost && matches!(hostname, "localhost" | "127.0.0.1" | "::1") {
-        anyhow::bail!("Access to localhost is not allowed.");
-    }
-
-    if let Ok(ip) = IpAddr::from_str(hostname) {
-        validate_ip_address(ip, allow_localhost)?;
-    }
-
-    let lookup_port = parsed.port_or_known_default().unwrap_or(80);
-    if let Ok(addrs) = lookup_host((hostname, lookup_port)).await {
-        for addr in addrs {
-            validate_ip_address(addr.ip(), allow_localhost)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_ip_address(ip: IpAddr, allow_localhost: bool) -> Result<()> {
-    let is_private = match ip {
-        IpAddr::V4(v4) => v4.is_private(),
-        IpAddr::V6(v6) => v6.is_unique_local(),
-    };
-    let is_link_local = match ip {
-        IpAddr::V4(v4) => v4.is_link_local(),
-        IpAddr::V6(v6) => v6.is_unicast_link_local(),
-    };
-
-    if !allow_localhost && ip.is_loopback() {
-        anyhow::bail!("Access to loopback address {ip} is not allowed.");
-    }
-    if is_private && !ip.is_loopback() {
-        anyhow::bail!("Access to private address {ip} is not allowed.");
-    }
-    if is_link_local {
-        anyhow::bail!("Access to link-local address {ip} is not allowed.");
-    }
-    if ip.is_unspecified() {
-        anyhow::bail!("Access to unspecified address {ip} is not allowed.");
-    }
-    if ip.is_multicast() {
-        anyhow::bail!("Access to multicast address {ip} is not allowed.");
-    }
-    if ip == IpAddr::from([169, 254, 169, 254]) {
-        anyhow::bail!("Access to cloud metadata service is not allowed.");
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use axum::Router;
@@ -400,8 +311,8 @@ mod tests {
     use sqlx::SqlitePool;
     use tokio::net::TcpListener;
 
-    use super::{update_all_regular_feeds, update_due_feeds};
     use super::{ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now};
+    use super::{update_all_regular_feeds, update_due_feeds};
 
     async fn setup_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();

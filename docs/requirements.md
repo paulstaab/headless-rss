@@ -48,6 +48,7 @@ Test cases are specified in separate documents:
 ### Article and Item Behavior
 - The system shall persist articles with GUID and GUID hash identifiers.
 - The system shall prevent duplicate article insertion using GUID hash.
+- Newly inserted articles shall default to unread unless explicitly marked otherwise.
 - The system shall provide item retrieval filtered by feed, folder, starred, or all items.
 - The system shall support item retrieval filtered by `last_modified`.
 - The system shall support read/unread and star/unstar state transitions for single and bulk operations.
@@ -158,6 +159,8 @@ Test cases are specified in separate documents:
   - only `http` and `https` schemes allowed
   - block loopback, private, link-local, unspecified, multicast, and metadata service addresses
   - allow localhost only in testing mode (`TESTING_MODE=true` in Rust env)
+- Rust API and updater feed fetch paths shall share one SSRF validation module to keep protections consistent.
+- Rust API and updater feed fetches shall use a configured `reqwest::Client` with explicit connection/read/overall timeouts.
 - Rust CLI `update` command shall execute a feed update cycle for due non-mailing-list feeds (`next_update_time` is null or in the past and `is_mailing_list = false`), insert new articles by guid-hash de-duplication, and persist feed update errors (`update_error_count`, `last_update_error`) on failures.
 - Rust dynamic feed refresh scheduling shall mirror Python logic: compute average articles/day over the last 7 days, schedule sparse feeds (<= 0.1/day) once daily with +/-30 minute jitter, and schedule active feeds at 4x average frequency capped to at least every 12 hours.
 - Rust feed ingestion shall extract `media_thumbnail` from the first `<img src="...">` in entry body HTML when the feed does not provide an explicit thumbnail.

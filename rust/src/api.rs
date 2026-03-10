@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{net::IpAddr, str::FromStr};
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -17,10 +16,10 @@ use feed_rs::model::Entry;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
-use tokio::net::lookup_host;
 use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
+use crate::ssrf;
 
 mod v1_2;
 mod v1_3;
@@ -29,6 +28,7 @@ mod v1_3;
 pub struct AppState {
     pub pool: SqlitePool,
     pub config: Arc<Config>,
+    pub feed_http_client: reqwest::Client,
 }
 
 #[derive(Serialize)]
@@ -472,14 +472,14 @@ async fn v1_2_add_feed(
     State(state): State<AppState>,
     Json(input): Json<FeedCreateIn>,
 ) -> Result<Json<FeedCreateOut>, (StatusCode, Json<serde_json::Value>)> {
-    add_feed(&state.pool, &state.config, input).await
+    add_feed(&state.pool, &state.feed_http_client, &state.config, input).await
 }
 
 async fn v1_3_add_feed(
     State(state): State<AppState>,
     Json(input): Json<FeedCreateIn>,
 ) -> Result<Json<FeedCreateOut>, (StatusCode, Json<serde_json::Value>)> {
-    add_feed(&state.pool, &state.config, input).await
+    add_feed(&state.pool, &state.feed_http_client, &state.config, input).await
 }
 
 async fn delete_feed(
@@ -569,10 +569,13 @@ async fn v1_3_mark_feed_items_read(
 
 async fn add_feed(
     pool: &SqlitePool,
+    feed_http_client: &reqwest::Client,
     config: &Config,
     input: FeedCreateIn,
 ) -> Result<Json<FeedCreateOut>, (StatusCode, Json<serde_json::Value>)> {
-    validate_remote_url(&input.url, config.testing_mode).await?;
+    ssrf::validate_remote_url(&input.url, config.testing_mode)
+        .await
+        .map_err(ssrf_error)?;
 
     let folder_id = resolve_folder_id(pool, input.folder_id).await?;
 
@@ -585,7 +588,11 @@ async fn add_feed(
         return Err(feed_already_exists());
     }
 
-    let response = reqwest::get(&input.url).await.map_err(feed_parse_error)?;
+    let response = feed_http_client
+        .get(&input.url)
+        .send()
+        .await
+        .map_err(feed_parse_error)?;
     if !response.status().is_success() {
         return Err(feed_parse_error(format!(
             "Error parsing feed from `{}`: HTTP {}",
@@ -626,97 +633,6 @@ async fn add_feed(
         feeds,
         newest_item_id: feed_id,
     }))
-}
-
-async fn validate_remote_url(
-    url: &str,
-    allow_localhost: bool,
-) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let parsed = reqwest::Url::parse(url).map_err(|_| {
-        ssrf_error("URL scheme '' is not allowed. Only http and https are permitted.")
-    })?;
-
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err(ssrf_error(format!(
-            "URL scheme '{}' is not allowed. Only http and https are permitted.",
-            parsed.scheme()
-        )));
-    }
-
-    let Some(hostname) = parsed.host_str() else {
-        return Err(ssrf_error("URL must have a valid hostname."));
-    };
-
-    if !allow_localhost && matches!(hostname, "localhost" | "127.0.0.1" | "::1") {
-        return Err(ssrf_error("Access to localhost is not allowed."));
-    }
-
-    // If the hostname itself is an IP literal, validate directly.
-    if let Ok(ip) = IpAddr::from_str(hostname) {
-        validate_ip_address(ip, allow_localhost)?;
-    }
-
-    // Resolve DNS and validate each resolved IP. If resolution fails, let HTTP fetch decide.
-    let lookup_port = parsed.port_or_known_default().unwrap_or(80);
-    if let Ok(addrs) = lookup_host((hostname, lookup_port)).await {
-        for addr in addrs {
-            validate_ip_address(addr.ip(), allow_localhost)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_ip_address(
-    ip: IpAddr,
-    allow_localhost: bool,
-) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let is_private = match ip {
-        IpAddr::V4(v4) => v4.is_private(),
-        IpAddr::V6(v6) => v6.is_unique_local(),
-    };
-    let is_link_local = match ip {
-        IpAddr::V4(v4) => v4.is_link_local(),
-        IpAddr::V6(v6) => v6.is_unicast_link_local(),
-    };
-
-    if !allow_localhost && ip.is_loopback() {
-        return Err(ssrf_error(format!(
-            "Access to loopback address {ip} is not allowed."
-        )));
-    }
-
-    if is_private && !ip.is_loopback() {
-        return Err(ssrf_error(format!(
-            "Access to private address {ip} is not allowed."
-        )));
-    }
-
-    if is_link_local {
-        return Err(ssrf_error(format!(
-            "Access to link-local address {ip} is not allowed."
-        )));
-    }
-
-    if ip.is_unspecified() {
-        return Err(ssrf_error(format!(
-            "Access to unspecified address {ip} is not allowed."
-        )));
-    }
-
-    if ip.is_multicast() {
-        return Err(ssrf_error(format!(
-            "Access to multicast address {ip} is not allowed."
-        )));
-    }
-
-    if ip == IpAddr::from([169, 254, 169, 254]) {
-        return Err(ssrf_error(
-            "Access to cloud metadata service is not allowed.",
-        ));
-    }
-
-    Ok(())
 }
 
 async fn insert_article_from_entry(
@@ -1641,6 +1557,7 @@ mod tests {
                 feed_update_frequency_min: 15,
                 testing_mode: true,
             }),
+            feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
         }
     }
 
@@ -2082,6 +1999,7 @@ mod tests {
                 feed_update_frequency_min: 15,
                 testing_mode: true,
             }),
+            feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
         };
 
         let response = app(state)
@@ -2110,6 +2028,7 @@ mod tests {
                 feed_update_frequency_min: 15,
                 testing_mode: false,
             }),
+            feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
         };
 
         let response = app(state)
@@ -2567,6 +2486,7 @@ mod tests {
                 feed_update_frequency_min: 15,
                 testing_mode: true,
             }),
+            feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
         };
 
         let wrong = base64::engine::general_purpose::STANDARD.encode("wronguser:wrongpass");
@@ -2602,6 +2522,7 @@ mod tests {
                 feed_update_frequency_min: 15,
                 testing_mode: true,
             }),
+            feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
         };
 
         let ok = base64::engine::general_purpose::STANDARD.encode("testuser:testpass");

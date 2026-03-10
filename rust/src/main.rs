@@ -2,6 +2,8 @@ mod api;
 mod config;
 mod db;
 mod email_credentials;
+mod http_client;
+mod ssrf;
 mod updater;
 
 use std::net::SocketAddr;
@@ -94,12 +96,15 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
     let pool = db::create_pool(&config.db_path)
         .await
         .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
+    let feed_http_client = http_client::build_feed_http_client()?;
 
     let scheduler_pool = pool.clone();
     let scheduler_testing_mode = config.testing_mode;
     let scheduler_interval = Duration::from_secs((config.feed_update_frequency_min as u64) * 60);
     tokio::spawn(async move {
-        if let Err(err) = updater::update_all_regular_feeds(&scheduler_pool, scheduler_testing_mode).await {
+        if let Err(err) =
+            updater::update_all_regular_feeds(&scheduler_pool, scheduler_testing_mode).await
+        {
             tracing::warn!(error = %err, "startup forced feed update cycle failed");
         }
 
@@ -116,6 +121,7 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
     let state = AppState {
         pool,
         config: config.clone(),
+        feed_http_client,
     };
 
     let app = api::app(state);
