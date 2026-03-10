@@ -6,6 +6,8 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "chat.tools.terminal.autoApprove": {
-        "cargo test": true
+        "cargo test": true,
+        "cargo fmt": true,
+        "cargo clippy": true
     }
 }

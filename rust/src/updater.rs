@@ -360,8 +360,7 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::{
-        NINETY_DAYS, ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval,
-        unix_now,
+        NINETY_DAYS, ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now,
     };
     use super::{update_all_regular_feeds, update_due_feeds};
 
@@ -668,7 +667,8 @@ mod tests {
         insert_test_article(&pool, 7, "stale-unread", stale, 1, 0).await;
         insert_test_article(&pool, 7, "stale-starred", stale, 0, 1).await;
         insert_test_article(&pool, 7, "fresh-read-unstarred", fresh, 0, 0).await;
-        insert_test_article_with_hash(&pool, 7, in_payload_guid, &in_payload_hash, stale, 0, 0).await;
+        insert_test_article_with_hash(&pool, 7, in_payload_guid, &in_payload_hash, stale, 0, 0)
+            .await;
 
         let updated = update_due_feeds(&pool, true).await.unwrap();
         assert_eq!(updated, 1);
@@ -694,20 +694,20 @@ mod tests {
                 .unwrap();
         assert!(starred_exists.is_some());
 
-        let fresh_exists: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM article WHERE guid = 'fresh-read-unstarred' LIMIT 1")
-                .fetch_optional(&pool)
-                .await
-                .unwrap();
-        assert!(fresh_exists.is_some());
-
-        let in_payload_exists: Option<i64> = sqlx::query_scalar(
-            "SELECT id FROM article WHERE guid_hash = ? LIMIT 1",
+        let fresh_exists: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM article WHERE guid = 'fresh-read-unstarred' LIMIT 1",
         )
-        .bind(in_payload_hash)
         .fetch_optional(&pool)
         .await
         .unwrap();
+        assert!(fresh_exists.is_some());
+
+        let in_payload_exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
+                .bind(in_payload_hash)
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
         assert!(in_payload_exists.is_some());
     }
 
@@ -720,7 +720,16 @@ mod tests {
         starred: i64,
     ) {
         let guid_hash = format!("{:x}", md5::compute(guid.as_bytes()));
-        insert_test_article_with_hash(pool, feed_id, guid, &guid_hash, last_modified, unread, starred).await;
+        insert_test_article_with_hash(
+            pool,
+            feed_id,
+            guid,
+            &guid_hash,
+            last_modified,
+            unread,
+            starred,
+        )
+        .await;
     }
 
     async fn insert_test_article_with_hash(
