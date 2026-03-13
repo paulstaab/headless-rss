@@ -73,7 +73,7 @@ This document tracks Rust implementation progress against the technology-indepen
 | SEC-005 | Implemented | Basic auth conditional behavior implemented. |
 | CFG-001 | Implemented | Environment-based runtime config exists. |
 | CFG-002 | Implemented | Required configuration variables supported. |
-| CFG-003 | Implemented | Defaults (`dev`, `15`, `gpt-5-mini`) configured. |
+| CFG-003 | Implemented | Defaults (`dev`, `15`, `gpt-5-nano`) configured. |
 | CLI-001 | Implemented | `update` command exists and runs updater. |
 | CLI-002 | Implemented | `add-email-credentials` command arguments are required. |
 | CLI-003 | Implemented | Validation failures return user-visible errors. |

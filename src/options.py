@@ -7,7 +7,7 @@ from typing import ClassVar
 
 DEFAULT_FEED_UPDATE_FREQUENCY_MIN = 15
 DEFAULT_VERSION = "dev"
-DEFAULT_OPENAI_MODEL = "gpt-5-mini"
+DEFAULT_OPENAI_MODEL = "gpt-5-nano"
 
 
 def _get_env_str(name: str) -> str | None:
