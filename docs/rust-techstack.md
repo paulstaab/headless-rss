@@ -21,8 +21,14 @@ This document lists the technology and tooling choices for the Rust implementati
 ## Feed Ingestion
 - HTTP client: `reqwest`
 - Feed parsing: `feed-rs`
+- Article extraction: `readability-js`
 - HTML image extraction: `regex` (for thumbnail fallback)
 - Deduplication hash: `md5`
+
+## Evaluation Notes
+- 2026-03-13: `readability-js` was evaluated against `readability-rust` on live heise.de, tagesschau.de, Spiegel, and Simon Willison articles.
+- Decision: keep `readability-js` for production extraction.
+- Rationale: `readability-js` produced consistently better titles and cleaner main-content extraction, while `readability-rust` pulled JSON-LD/media metadata on tagesschau pages, regressed titles on some pages, and under-extracted some articles.
 
 ## Email Integration
 - IMAP client: `imap`
