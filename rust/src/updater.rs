@@ -789,7 +789,9 @@ mod tests {
     async fn update_due_feeds_leaves_extraction_disabled_when_quality_is_not_better() {
         let pool = setup_pool().await;
         let url = start_quality_fixture_feed_server(
-            Some("This feed summary already includes substantial detail about the article contents."),
+            Some(
+                "This feed summary already includes substantial detail about the article contents.",
+            ),
             None,
             "<html><body><article><p>Short article.</p></article></body></html>",
             None,
@@ -861,7 +863,9 @@ mod tests {
             .await
             .unwrap();
 
-        let updated = update_due_feeds(&pool, &test_config_with_llm(&llm_base_url), true).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config_with_llm(&llm_base_url), true)
+            .await
+            .unwrap();
         assert_eq!(updated, 1);
 
         let flags: (bool, bool) = sqlx::query_as(
@@ -891,7 +895,9 @@ mod tests {
             .await
             .unwrap();
 
-        let updated = update_due_feeds(&pool, &test_config_with_llm(&llm_base_url), true).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config_with_llm(&llm_base_url), true)
+            .await
+            .unwrap();
         assert_eq!(updated, 1);
 
         let flags: (bool, bool) = sqlx::query_as(
@@ -903,13 +909,15 @@ mod tests {
         assert!(!flags.0);
         assert!(flags.1);
 
-        let summary: Option<String> = sqlx::query_scalar(
-            "SELECT summary FROM article WHERE feed_id = 12 LIMIT 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(summary.as_deref(), Some("Fixture summary from mock LLM. (AI generated)"));
+        let summary: Option<String> =
+            sqlx::query_scalar("SELECT summary FROM article WHERE feed_id = 12 LIMIT 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            summary.as_deref(),
+            Some("Fixture summary from mock LLM. (AI generated)")
+        );
     }
 
     async fn start_quality_fixture_feed_server(
@@ -971,7 +979,9 @@ mod tests {
                             .map(|summary| format!("<summary>{summary}</summary>"))
                             .unwrap_or_default();
                         let content_xml = entry_content
-                            .map(|content| format!("<content type=\"html\"><![CDATA[{content}]]></content>"))
+                            .map(|content| {
+                                format!("<content type=\"html\"><![CDATA[{content}]]></content>")
+                            })
                             .unwrap_or_default();
                         (
                             [(http_header::CONTENT_TYPE, "application/atom+xml")],

@@ -141,8 +141,7 @@ pub async fn maybe_refresh_feed_content_state(
     } else {
         feed_content
     };
-    let use_llm_summary =
-        should_enable_llm_summary(config, final_article_text, feed_summary).await;
+    let use_llm_summary = should_enable_llm_summary(config, final_article_text, feed_summary).await;
     let next_state = FeedContentState {
         last_quality_check: Some(unix_now()),
         use_extracted_fulltext,
