@@ -4,7 +4,7 @@
 This contract covers non-Nextcloud service endpoints exposed by the service.
 
 ## Mounting
-- Application entrypoint: `src/api/app.py`
+- Application entrypoint: `src/main.rs`
 - Public host/port are deployment-specific (default local dev: `http://localhost:8000`)
 
 ## Endpoints

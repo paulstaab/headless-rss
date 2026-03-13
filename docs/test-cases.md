@@ -102,3 +102,139 @@ Source: `tests/test_email.py`
 - Unit and API tests under `tests/`.
 - Shared fixtures under `tests/fixtures/`.
 - API-specific test-case details in the API test-case documents listed above.
+
+## Rust Bootstrap Test Cases
+Source: `src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-001 | Rust health endpoint | Call Rust `/status`. | Returns `200` with `{"status":"ok"}`. |
+| TC-RUST-002 | Root folder feed mapping | Query Rust feeds endpoint with feed assigned to root folder. | Feed object returns `folderId: null`. |
+| TC-RUST-003 | Conditional auth enforcement | Query protected Rust endpoint when auth env vars are set and no credentials are provided. | Returns `401` with `{"detail":"Not authenticated"}` and Basic auth challenge header. |
+| TC-RUST-004 | Rust items read endpoint | Query Rust `/items` with feed selection parameters. | Returns `200` with `items` payload and `body` preferring summary over content. |
+| TC-RUST-005 | Rust updated-items filtering | Query Rust `/items/updated` with `lastModified` filter. | Returns `200` and only items meeting `lastModified` criteria. |
+| TC-RUST-006 | Rust item content missing | Query Rust `/items/{item_id}/content` for a missing item ID. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-007 | v1-2 star by guid-hash route | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star` for an existing item. | Returns `200` and updates item to starred. |
+| TC-RUST-008 | v1-3 read-multiple payload shape | Call `POST /index.php/apps/news/api/v1-3/items/read/multiple` with `{"itemIds": [...]}`. | Returns `200` and marks targeted items as read. |
+| TC-RUST-009 | Rust folder creation endpoint | Call `POST /index.php/apps/news/api/v1-3/folders` with a valid non-empty name. | Returns `200` with created folder in `folders` payload. |
+| TC-RUST-010 | v1-2 feed move method contract | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/move` with `{"folderId": ...}`. | Returns `200` and updates feed folder assignment. |
+| TC-RUST-011 | v1-3 feed read method contract | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` with `{"newestItemId": ...}`. | Returns `200` and marks matching feed items as read. |
+| TC-RUST-012 | Rust feed creation SSRF localhost block | Call `POST /index.php/apps/news/api/v1-3/feeds` with URL `http://127.0.0.1:...` when testing mode is disabled. | Returns `400` with SSRF protection error detail. |
+| TC-RUST-013 | Rust folder duplicate-create conflict | Call `POST /index.php/apps/news/api/v1-3/folders` for an existing folder name. | Returns `409` with `{"detail":"Folder already exists"}`. |
+| TC-RUST-014 | Rust folder delete missing | Call `DELETE /index.php/apps/news/api/v1-3/folders/{folder_id}` for a missing folder ID. | Returns `404` with `{"detail":"Folder not found"}`. |
+| TC-RUST-015 | Rust feed duplicate-create conflict | Call `POST /index.php/apps/news/api/v1-3/feeds` for an already existing feed URL. | Returns `409` conflict. |
+| TC-RUST-016 | Rust feed create invalid folder | Call `POST /index.php/apps/news/api/v1-3/feeds` with a non-existent `folderId`. | Returns `422` with `Folder with ID ... does not exist`. |
+| TC-RUST-017 | Rust feed delete missing | Call `DELETE /index.php/apps/news/api/v1-3/feeds/{feed_id}` for a missing feed ID. | Returns `404` not found. |
+| TC-RUST-018 | Rust feed move invalid folder | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/move` with non-existent `folderId`. | Returns `422` with `Folder with ID ... does not exist`. |
+| TC-RUST-019 | Rust feed create payload parity | Call `POST /index.php/apps/news/api/v1-3/feeds` against a valid fixture Atom feed with `folderId=0`. | Returns `200` and payload includes expected feed fields (`url`, `title`, `link`, `updateErrorCount`) and `newestItemId` matching created feed ID. |
+| TC-RUST-020 | Rust folder read side effect | Seed a feed/article in a non-root folder and call `POST /index.php/apps/news/api/v1-3/folders/{folder_id}/read`. | Returns `200` and matching folder items are marked `unread=false`. |
+| TC-RUST-021 | v1-2 feed rename success path | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` with `{"feedTitle": ...}`. | Returns `200` and updates feed title in storage. |
+| TC-RUST-022 | v1-3 feed rename success path | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/rename` with `{"feedTitle": ...}`. | Returns `200` and updates feed title in storage. |
+| TC-RUST-023 | v1-2 feed rename method mismatch | Call `POST /index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` (wrong method). | Returns `405` method not allowed. |
+| TC-RUST-024 | v1-3 feed rename method mismatch | Call `PUT /index.php/apps/news/api/v1-3/feeds/{feed_id}/rename` (wrong method). | Returns `405` method not allowed. |
+| TC-RUST-025 | v1-2 feed read success path | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/read` with `{"newestItemId": ...}`. | Returns `200` and marks matching feed items as read. |
+| TC-RUST-026 | v1-3 feed read method mismatch | Call `PUT /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` (wrong method). | Returns `405` method not allowed. |
+| TC-RUST-027 | Rust feed delete cascade | Call `DELETE /index.php/apps/news/api/v1-3/feeds/{feed_id}` for an existing feed with items. | Returns `200`, deletes feed, and deletes associated articles. |
+| TC-RUST-028 | Rust folder delete cascade | Call `DELETE /index.php/apps/news/api/v1-3/folders/{folder_id}` for a folder containing feeds/items. | Returns `200`, deletes folder, deletes feeds in folder, and deletes their articles. |
+| TC-RUST-029 | Rust updater inserts new entries | Seed a due feed row and run Rust updater cycle against a valid fixture feed URL. | Due feed is processed, new article rows are inserted, and update error count remains `0`. |
+| TC-RUST-030 | Rust updater persists update errors | Seed a due feed row with an invalid/blocked URL and run Rust updater cycle. | Feed `update_error_count` increments and `last_update_error` is populated. |
+| TC-RUST-031 | Rust add-email-credentials success persistence | Run add-email-credentials persistence flow with validator success. | Credentials row is inserted into `email_credentials`. |
+| TC-RUST-032 | Rust add-email-credentials validation gate | Run add-email-credentials persistence flow with validator failure. | Command path fails and no credential row is persisted. |
+| TC-RUST-033 | Rust folder create invalid-name validation | Call `POST /index.php/apps/news/api/v1-3/folders` with an empty name. | Returns `422` with `{"detail":"Folder name is invalid"}`. |
+| TC-RUST-034 | Rust folder rename duplicate-name validation | Seed two folders and call `PUT /index.php/apps/news/api/v1-3/folders/{folder_id}` with an existing name. | Returns `409` with `{"detail":"Folder already exists"}`. |
+| TC-RUST-035 | Rust folder rename invalid-name validation | Call `PUT /index.php/apps/news/api/v1-3/folders/{folder_id}` with an empty name. | Returns `422` with `{"detail":"Folder name is invalid"}`. |
+| TC-RUST-036 | Rust feed create unreadable-source handling | Call `POST /index.php/apps/news/api/v1-3/feeds` with a URL returning non-success HTTP status. | Returns `422` parse/read failure response. |
+| TC-RUST-037 | Rust feed create next-update field | Call `POST /index.php/apps/news/api/v1-3/feeds` for a valid fixture feed and inspect payload. | Feed payload contains non-null `nextUpdateTime`. |
+| TC-RUST-038 | Rust v1-2 rename missing-feed detail | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/rename` with non-existent feed ID. | Returns `404` with `Feed {id} not found`. |
+| TC-RUST-039 | Rust v1-3 read missing-feed detail | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` with non-existent feed ID. | Returns `404` with `Feed {id} not found`. |
+| TC-RUST-040 | Rust protected endpoint rejects invalid credentials | Call protected endpoint with wrong Basic credentials. | Returns `401` with `{"detail":"Invalid authentication credentials"}`. |
+| TC-RUST-041 | Rust protected endpoint accepts valid credentials | Call protected endpoint with correct Basic credentials. | Returns `200`. |
+| TC-RUST-042 | Rust items invalid type validation | Call `GET /index.php/apps/news/api/v1-3/items?type=99&id=0`. | Returns `400` with `{"detail":"Invalid item selection type"}`. |
+| TC-RUST-043 | Rust v1-2 item read missing detail | Call `POST /index.php/apps/news/api/v1-2/items/{item_id}/read` with non-existent item ID. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-044 | Rust v1-3 item star missing detail | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/star` with non-existent item ID. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-045 | Rust v1-2 guid-star missing detail | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/star` with non-existent guid-hash. | Returns `404` with `{"detail":"Item not found"}`. |
+| TC-RUST-046 | Rust v1-2 read-multiple state update | Call `PUT /index.php/apps/news/api/v1-2/items/read/multiple` with `{"items":[id]}` for an unread item. | Returns `200`; item is marked `unread=false` and `lastModified` increases. |
+| TC-RUST-047 | Rust v1-2 guid-star-multiple state update | Call `PUT /index.php/apps/news/api/v1-2/items/star/multiple` with a valid guid-hash payload. | Returns `200`; item is marked `starred=true` and `lastModified` increases. |
+| TC-RUST-048 | Rust v1-3 unread-multiple state update | Call `POST /index.php/apps/news/api/v1-3/items/unread/multiple` with `{"itemIds":[id]}` after marking item read. | Returns `200`; item is marked `unread=true` and `lastModified` increases. |
+| TC-RUST-049 | Rust v1-3 unstar-multiple state update | Call `POST /index.php/apps/news/api/v1-3/items/unstar/multiple` with `{"itemIds":[id]}` after starring item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
+| TC-RUST-050 | Rust v1-2 mark-all-read state update | Call `PUT /index.php/apps/news/api/v1-2/items/read` with `{"newestItemId":id}`. | Returns `200`; matching items are marked `unread=false` and `lastModified` increases. |
+| TC-RUST-051 | Rust v1-3 mark-all-read state update | Call `POST /index.php/apps/news/api/v1-3/items/read` with `{"newestItemId":id}`. | Returns `200`; matching items are marked `unread=false` and `lastModified` increases. |
+| TC-RUST-052 | Rust updater skips mailing-list feeds | Seed a due feed row with `is_mailing_list=1` and run Rust updater cycle. | Row is excluded from web-feed updates, and update error fields remain unchanged. |
+
+### Rust Single-Item Write Parity Test Cases
+Source: `src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-053 | Rust v1-2 single read state update | Call `POST /index.php/apps/news/api/v1-2/items/{item_id}/read` for an unread item. | Returns `200`; item is marked `unread=false` and `lastModified` increases. |
+| TC-RUST-054 | Rust v1-2 single unread state update | Call `PUT /index.php/apps/news/api/v1-2/items/{item_id}/unread` for a read item. | Returns `200`; item is marked `unread=true` and `lastModified` increases. |
+| TC-RUST-055 | Rust v1-2 single unstar state update | Call `PUT /index.php/apps/news/api/v1-2/items/{feed_id}/{guid_hash}/unstar` for a starred item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
+| TC-RUST-056 | Rust v1-3 single read state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/read` for an unread item. | Returns `200`; item is marked `unread=false` and `lastModified` increases. |
+| TC-RUST-057 | Rust v1-3 single unread state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/unread` for a read item. | Returns `200`; item is marked `unread=true` and `lastModified` increases. |
+| TC-RUST-058 | Rust v1-3 single star state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/star` for an unstarred item. | Returns `200`; item is marked `starred=true` and `lastModified` increases. |
+| TC-RUST-059 | Rust v1-3 single unstar state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/unstar` for a starred item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
+
+### Rust Item Query Contract Test Cases
+Source: `src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-060 | Rust items folder selection | Call `GET /index.php/apps/news/api/v1-3/items?type=1&id={folder_id}` with items in and out of that folder. | Returns only items whose feeds belong to the specified folder. |
+| TC-RUST-061 | Rust items starred selection | Call `GET /index.php/apps/news/api/v1-3/items?type=2&id=0` with mixed starred/unstarred items. | Returns only starred items. |
+| TC-RUST-062 | Rust items unread filtering | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&getRead=false` with mixed read/unread items. | Returns only unread items. |
+| TC-RUST-063 | Rust items oldest-first ordering | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&oldestFirst=true` with multiple item IDs. | Returns items ordered by ascending item ID. |
+| TC-RUST-064 | Rust items batch-size limit | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&batchSize=1` with multiple items. | Returns exactly one item, respecting descending default order. |
+| TC-RUST-065 | Rust items offset/newest-id semantics | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&offset={id}` with newer and older items. | Returns only items with `id <= offset`, matching the established newest-item-id semantics. |
+
+### Rust Updated-Items Query Contract Test Cases
+Source: `src/api.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-066 | Rust updated-items feed selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=0&id={feed_id}` with mixed modification times in one feed. | Returns only feed items where `lastModified >= ts`. |
+| TC-RUST-067 | Rust updated-items folder selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=1&id={folder_id}` with mixed modification times in one folder. | Returns only folder items where `lastModified >= ts`. |
+| TC-RUST-068 | Rust updated-items starred selection | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=2&id=0` with mixed starred items and modification times. | Returns only starred items where `lastModified >= ts`. |
+| TC-RUST-069 | Rust updated-items all selection threshold | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with mixed modification times. | Returns all items across feeds where `lastModified >= ts`. |
+| TC-RUST-070 | Rust updated-items all selection ordering | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with multiple matching IDs. | Returns matching items in descending item-ID order (`oldestFirst=false`). |
+| TC-RUST-071 | Rust feed ingest thumbnail fallback | Add a feed whose entry body HTML contains an `<img>` and no explicit feed thumbnail. | Inserted article stores `media_thumbnail` from the first body image URL. |
+| TC-RUST-072 | Rust updater stale-article cleanup gate | Seed feed articles spanning stale/fresh, read/unread, starred/unstarred, and in-payload/not-in-payload states; run due-feed update. | Only articles older than 90 days that are read, unstarred, and absent from the latest payload are deleted. |
+| TC-RUST-073 | Rust readability article extraction | Run Rust article extraction on fixture HTML containing article body and footer. | Extracted HTML contains the main article body and excludes footer boilerplate. |
+| TC-RUST-074 | Rust feed quality enables extraction | Run Rust updater against a feed whose sampled article extracts to content much longer than the feed summary. | Feed flags persist `use_extracted_fulltext=true`, `use_llm_summary=false`, and `last_quality_check` is updated. |
+| TC-RUST-075 | Rust feed quality rejects weak extraction | Run Rust updater against a feed whose sampled article extraction is not substantially better than the feed summary. | Feed flags persist `use_extracted_fulltext=false`, `use_llm_summary=false`, and `last_quality_check` is updated. |
+| TC-RUST-076 | Rust non-LLM summary fallback | Generate a Rust article summary for long content while LLM summarization is disabled. | Summary falls back to the first 160 characters plus `...`. |
+| TC-RUST-077 | Rust LLM summary suffix | Generate a Rust article summary from an LLM result. | Persisted/generated summary ends with ` (AI generated)`. |
+| TC-RUST-078 | Rust mock OpenAI journey summary | Add a feed whose article is fetched from a local fixture and whose summary is generated from a mock OpenAI-compatible endpoint. | The running Rust service stores extracted article content and returns the mocked summary with the ` (AI generated)` suffix through the item APIs. |
+| TC-RUST-086 | Rust heuristic feed-summary quality flag | Run Rust updater without LLM support against a feed whose summary is just the normalized prefix of the chosen article text. | Feed flags persist `use_extracted_fulltext=false` and `use_llm_summary=true`. |
+| TC-RUST-087 | Rust LLM summary-quality accepts good feed summary | Run Rust updater with LLM support against a feed whose summary-quality check returns `is_good=true`. | Feed flags persist `use_llm_summary=false` and keep feed summaries for that feed. |
+| TC-RUST-088 | Rust LLM summary-quality rejects weak feed summary | Run Rust updater with LLM support against a feed whose summary-quality check returns `is_good=false`. | Feed flags persist `use_llm_summary=true`. |
+| TC-RUST-089 | Rust LLM failure falls back to truncation | Generate a Rust article summary for long content with LLM summarization enabled but no usable LLM summary returned. | Summary falls back to the first 160 characters plus `...`. |
+| TC-RUST-079 | Rust newsletter mailbox ingestion | Seed IMAP credentials and feed mock unread mailing-list messages through the Rust newsletter updater path. | Mailing-list feeds are created, non-list mail is ignored, and newsletter articles are persisted without duplicates. |
+| TC-RUST-080 | Rust newsletter HTML cleanup | Process an HTML newsletter containing hidden blocks, meta tags, layout tables, and tracking pixels. | Persisted newsletter content removes hidden/tracking markup while preserving readable content. |
+| TC-RUST-081 | Rust newsletter LLM multi-item split | Build newsletter articles from a mocked Rust LLM parse result with `mode=multi`. | Up to 25 URL-backed items are converted into separate persisted articles with expected URLs and summaries. |
+| TC-RUST-082 | Rust newsletter LLM single-item mode | Build newsletter articles from a mocked Rust LLM parse result with `mode=single`. | A single persisted article uses the cleaned LLM content and summary. |
+| TC-RUST-083 | Rust newsletter stale cleanup gate | Seed newsletter and non-newsletter articles across old/new, read/unread, and starred/unstarred states. | Only stale read unstarred newsletter articles are deleted. |
+| TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
+| TC-RUST-085 | Rust mocked newsletter journey | Run the Rust CLI credential command and update command with a test-only mocked IMAP mailbox file. | Newsletter feed/items are created through the full subprocess path without requiring a real mailbox. |
+| TC-RUST-090 | Rust newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
+| TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
+
+### Rust Newsletter Processing Test Cases
+Source: `src/email.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-079 | Rust newsletter mailbox ingestion | Seed IMAP credentials and feed mock unread mailing-list messages through the Rust newsletter updater path. | Mailing-list feeds are created, non-list mail is ignored, and newsletter articles are persisted without duplicates. |
+| TC-RUST-080 | Rust newsletter HTML cleanup | Process an HTML newsletter containing hidden blocks, meta tags, layout tables, and tracking pixels. | Persisted newsletter content removes hidden/tracking markup while preserving readable content. |
+| TC-RUST-081 | Rust newsletter LLM multi-item split | Build newsletter articles from a mocked Rust LLM parse result with `mode=multi`. | Up to 25 URL-backed items are converted into separate persisted articles with expected URLs and summaries. |
+| TC-RUST-082 | Rust newsletter LLM single-item mode | Build newsletter articles from a mocked Rust LLM parse result with `mode=single`. | A single persisted article uses the cleaned LLM content and summary. |
+| TC-RUST-083 | Rust newsletter stale cleanup gate | Seed newsletter and non-newsletter articles across old/new, read/unread, and starred/unstarred states. | Only stale read unstarred newsletter articles are deleted. |
+| TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
+| TC-RUST-090 | Rust newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
+| TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
+
+### Rust Migration Bootstrap Test Cases
+Source: `src/db.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-052 | Rust SQLx migration bootstrap | Create a new SQLite file and initialize Rust pool via `create_pool`. | SQLx baseline migration is applied, core tables are created, and root folder `id=0` exists with `is_root=1`. |

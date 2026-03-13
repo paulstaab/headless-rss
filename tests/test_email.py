@@ -74,7 +74,7 @@ def test_fetch_emails(mocker):
 def test_llm_newsletter_parsing_creates_multiple_articles(mocker, monkeypatch):
     """Ensure LLM parsing splits a newsletter into multiple articles."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-nano")
 
     response_payload = {
         "mode": "multi",
@@ -127,7 +127,7 @@ def test_llm_newsletter_parsing_creates_multiple_articles(mocker, monkeypatch):
 def test_llm_newsletter_parsing_creates_single_article(mocker, monkeypatch):
     """Ensure LLM parsing keeps a newsletter as a single article when appropriate."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-nano")
 
     response_payload = {
         "mode": "single",

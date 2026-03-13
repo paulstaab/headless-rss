@@ -1,34 +1,17 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the
-// README at: https://github.com/devcontainers/templates/tree/main/src/python
 {
-	"name": "Python 3",
-	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/python:3",
+	"name": "headless-rss",
+	"image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
 	"features": {
-		"ghcr.io/va-h/devcontainers-features/uv:1": {},
+		"ghcr.io/devcontainers/features/python:1": {},
 		"ghcr.io/rails/devcontainer/features/sqlite3:latest": {}
 	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"alexcvzz.vscode-sqlite",
-				"charliermarsh.ruff"
+				"rust-lang.rust-analyzer"
 			]
 		}
 	},
-
-	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
-
-	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	// "forwardPorts": [],
-
-	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "uv run --dev pre-commit install"
-
-	// Configure tool-specific properties.
-	// "customizations": {},
-
-	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
-	// "remoteUser": "root"
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep && sudo rm -rf /var/lib/apt/lists/* && cargo fetch"
 }

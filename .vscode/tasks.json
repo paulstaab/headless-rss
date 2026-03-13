@@ -4,13 +4,13 @@
         {
             "label": "Update Dependencies",
             "type": "shell",
-            "command": "uv sync --upgrade",
+            "command": "cargo update",
             "problemMatcher": []
         },
         {
             "label": "Lint",
             "type": "shell",
-            "command": "uv run --dev pre-commit run --all-files",
+            "command": "cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
@@ -20,32 +20,20 @@
         {
             "label": "Run All Tests",
             "type": "shell",
-            "command": "uv run --dev pytest tests",
-            "problemMatcher": [],
-            "dependsOn": [
-                "Execute Migrations"
-            ]
-        },
-        {
-            "label": "Generate Alembic Migration",
-            "type": "shell",
-            "command": "uv run alembic revision --autogenerate -m \"New migration\"",
+            "command": "cargo test --all-targets --all-features",
             "problemMatcher": []
         },
         {
-            "label": "Execute Migrations",
+            "label": "Build Release",
             "type": "shell",
-            "command": "uv run alembic upgrade head",
+            "command": "cargo build --release",
             "problemMatcher": []
         },
         {
             "label": "Start Server",
             "type": "shell",
-            "command": "uv run uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload",
-            "problemMatcher": [],
-            "dependsOn": [
-                "Execute Migrations"
-            ]
+            "command": "cargo run -- serve --host 0.0.0.0 --port 8000",
+            "problemMatcher": []
         }
     ]
 }
