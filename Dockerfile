@@ -5,6 +5,7 @@ WORKDIR /app
 COPY rust/Cargo.toml rust/Cargo.lock /app/rust/
 COPY rust/src /app/rust/src
 COPY rust/migrations /app/rust/migrations
+COPY rust/vendor /app/rust/vendor
 COPY docker/entrypoint /app/docker/entrypoint
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
