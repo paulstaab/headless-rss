@@ -26,7 +26,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "uv run --dev pre-commit install"
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep && sudo rm -rf /var/lib/apt/lists/* && uv run --dev pre-commit install"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
