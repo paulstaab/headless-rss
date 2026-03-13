@@ -4,6 +4,7 @@
 //! mailing-list/newsletter traffic, converting those messages into article rows, and
 //! applying newsletter-specific cleanup behavior.
 
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
@@ -25,6 +26,7 @@ use crate::llm;
 const NINETY_DAYS: i64 = 90 * 24 * 60 * 60;
 const NEWSLETTER_MAX_CHARS: usize = 5_000;
 const NEWSLETTER_MAX_ITEMS: usize = 25;
+const NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS: usize = 160;
 
 #[derive(Clone, Debug, FromRow)]
 struct EmailCredentialRow {
@@ -53,6 +55,7 @@ struct NewsletterItem {
 
 #[derive(Deserialize)]
 struct RawNewsletterLlmResult {
+    #[allow(dead_code)]
     mode: String,
     summary: Option<String>,
     content: Option<String>,
@@ -503,10 +506,10 @@ fn extract_subject(parsed: &ParsedMail<'_>) -> String {
 
 /// Extracts the sender email address from a `From` header.
 fn extract_sender_address(from_header: &str) -> String {
-    if let Some(start) = from_header.find('<') {
-        if let Some(end) = from_header[start + 1..].find('>') {
-            return from_header[start + 1..start + 1 + end].trim().to_string();
-        }
+    if let Some(start) = from_header.find('<')
+        && let Some(end) = from_header[start + 1..].find('>')
+    {
+        return from_header[start + 1..start + 1 + end].trim().to_string();
     }
 
     from_header.trim().to_string()
@@ -606,7 +609,7 @@ async fn parse_newsletter_with_llm(
         return None;
     }
 
-    let content = llm::request_chat_completion_content(
+    let response_text = llm::request_chat_completion_content(
         config,
         build_openai_newsletter_payload(
             &config.openai_model,
@@ -618,7 +621,7 @@ async fn parse_newsletter_with_llm(
     )
     .await?;
 
-    let parsed: RawNewsletterLlmResult = match serde_json::from_str(&content) {
+    let parsed: RawNewsletterLlmResult = match serde_json::from_str(&response_text) {
         Ok(parsed) => parsed,
         Err(err) => {
             tracing::warn!(error = %err, "newsletter llm response was not valid JSON");
@@ -626,31 +629,87 @@ async fn parse_newsletter_with_llm(
         }
     };
 
-    Some(normalize_llm_result(parsed))
+    Some(normalize_llm_result(parsed, content))
 }
 
-/// Normalizes raw LLM output into the stricter internal newsletter parse representation.
-fn normalize_llm_result(result: RawNewsletterLlmResult) -> NewsletterLlmResult {
-    let items = result
+/// Normalizes raw LLM output into a deterministic newsletter parse result.
+///
+/// Multi-item mode is used only when the parse yields at least two distinct linked
+/// items. All other cases are coerced into single-item mode with fallback content
+/// and a concise fallback summary so downstream ingestion always has a usable shape.
+fn normalize_llm_result(
+    result: RawNewsletterLlmResult,
+    fallback_content: &str,
+) -> NewsletterLlmResult {
+    let mut seen_urls = HashSet::new();
+    let items: Vec<NewsletterItem> = result
         .items
         .unwrap_or_default()
         .into_iter()
         .filter_map(|item| {
-            item.url.map(|url| NewsletterItem {
-                title: item.title,
+            let url = normalize_optional_text(item.url)?;
+            if !seen_urls.insert(url.clone()) {
+                return None;
+            }
+
+            Some(NewsletterItem {
+                title: normalize_optional_text(item.title),
                 url,
-                summary: item.summary,
-                content: item.content,
+                summary: normalize_optional_text(item.summary),
+                content: normalize_optional_text(item.content),
             })
         })
         .collect();
 
-    NewsletterLlmResult {
-        mode: result.mode,
-        summary: result.summary,
-        content: result.content,
-        items,
+    let summary = normalize_optional_text(result.summary);
+    let content = normalize_optional_text(result.content)
+        .or_else(|| normalize_optional_text(Some(fallback_content.to_string())));
+
+    if items.len() >= 2 {
+        return NewsletterLlmResult {
+            mode: "multi".to_string(),
+            summary,
+            content,
+            items,
+        };
     }
+
+    NewsletterLlmResult {
+        mode: "single".to_string(),
+        summary: summary.or_else(|| content.as_deref().and_then(build_single_mode_summary)),
+        content,
+        items: Vec::new(),
+    }
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+fn build_single_mode_summary(content: &str) -> Option<String> {
+    let plain = newsletter_plain_text(content);
+    if plain.is_empty() {
+        return None;
+    }
+
+    if plain.chars().count() <= NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS {
+        return Some(plain);
+    }
+
+    Some(format!(
+        "{}...",
+        truncate_chars(&plain, NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS)
+    ))
+}
+
+fn newsletter_plain_text(content: &str) -> String {
+    let without_tags = html_tag_regex().replace_all(content, " ");
+    whitespace_regex()
+        .replace_all(&without_tags, " ")
+        .trim()
+        .to_string()
 }
 
 /// Builds the structured-output payload used for newsletter parsing requests.
@@ -751,6 +810,12 @@ fn whitespace_regex() -> &'static Regex {
     REGEX.get_or_init(|| Regex::new(r"\s+").expect("valid whitespace regex"))
 }
 
+/// Returns the compiled regex used to strip HTML tags when building plain-text fallbacks.
+fn html_tag_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"(?is)<[^>]+>").expect("valid html strip regex"))
+}
+
 /// Truncates text by character count while preserving valid UTF-8 boundaries.
 fn truncate_chars(text: &str, limit: usize) -> String {
     text.chars().take(limit).collect()
@@ -763,10 +828,10 @@ mod tests {
     use crate::config::Config;
 
     use super::{
-        EmailCredentialRow, NEWSLETTER_MAX_ITEMS, NewsletterItem, NewsletterLlmResult,
-        build_articles_from_email, clean_newsletter_html, clean_up_old_newsletters,
-        fetch_emails_from_all_mailboxes_with_fetcher, load_mock_messages_from_env,
-        normalize_llm_result, process_email_message,
+        EmailCredentialRow, NEWSLETTER_MAX_ITEMS, NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS,
+        NewsletterItem, NewsletterLlmResult, build_articles_from_email, clean_newsletter_html,
+        clean_up_old_newsletters, fetch_emails_from_all_mailboxes_with_fetcher,
+        load_mock_messages_from_env, normalize_llm_result, process_email_message,
     };
 
     async fn setup_pool() -> SqlitePool {
@@ -1066,28 +1131,97 @@ mod tests {
 
     #[test]
     fn normalize_llm_result_discards_items_without_urls() {
-        let normalized = normalize_llm_result(super::RawNewsletterLlmResult {
-            mode: "multi".to_string(),
-            summary: None,
-            content: None,
-            items: Some(vec![
-                super::RawNewsletterItem {
-                    title: Some("keep".to_string()),
-                    url: Some("https://example.com/1".to_string()),
-                    summary: Some("summary".to_string()),
-                    content: None,
-                },
-                super::RawNewsletterItem {
-                    title: Some("drop".to_string()),
-                    url: None,
-                    summary: None,
-                    content: None,
-                },
-            ]),
-        });
+        let normalized = normalize_llm_result(
+            super::RawNewsletterLlmResult {
+                mode: "multi".to_string(),
+                summary: None,
+                content: None,
+                items: Some(vec![
+                    super::RawNewsletterItem {
+                        title: Some("keep".to_string()),
+                        url: Some("https://example.com/1".to_string()),
+                        summary: Some("summary".to_string()),
+                        content: None,
+                    },
+                    super::RawNewsletterItem {
+                        title: Some("drop".to_string()),
+                        url: None,
+                        summary: None,
+                        content: None,
+                    },
+                ]),
+            },
+            "Fallback newsletter body",
+        );
 
-        assert_eq!(normalized.items.len(), 1);
+        assert_eq!(normalized.mode, "single");
+        assert!(normalized.items.is_empty());
+        assert_eq!(
+            normalized.content.as_deref(),
+            Some("Fallback newsletter body")
+        );
+        assert_eq!(
+            normalized.summary.as_deref(),
+            Some("Fallback newsletter body")
+        );
+    }
+
+    #[test]
+    fn normalize_llm_result_keeps_multi_mode_only_for_multiple_distinct_urls() {
+        let normalized = normalize_llm_result(
+            super::RawNewsletterLlmResult {
+                mode: "single".to_string(),
+                summary: None,
+                content: None,
+                items: Some(vec![
+                    super::RawNewsletterItem {
+                        title: Some("first".to_string()),
+                        url: Some("https://example.com/1".to_string()),
+                        summary: Some("summary one".to_string()),
+                        content: None,
+                    },
+                    super::RawNewsletterItem {
+                        title: Some("duplicate".to_string()),
+                        url: Some("https://example.com/1".to_string()),
+                        summary: Some("duplicate summary".to_string()),
+                        content: None,
+                    },
+                    super::RawNewsletterItem {
+                        title: Some("second".to_string()),
+                        url: Some("https://example.com/2".to_string()),
+                        summary: Some("summary two".to_string()),
+                        content: None,
+                    },
+                ]),
+            },
+            "Fallback newsletter body",
+        );
+
+        assert_eq!(normalized.mode, "multi");
+        assert_eq!(normalized.items.len(), 2);
         assert_eq!(normalized.items[0].url, "https://example.com/1");
+        assert_eq!(normalized.items[1].url, "https://example.com/2");
+    }
+
+    #[test]
+    fn normalize_llm_result_builds_concise_single_summary_when_missing() {
+        let normalized = normalize_llm_result(
+            super::RawNewsletterLlmResult {
+                mode: "single".to_string(),
+                summary: None,
+                content: Some(format!(
+                    "<p>{}</p>",
+                    "A".repeat(NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS + 20)
+                )),
+                items: None,
+            },
+            "Fallback newsletter body",
+        );
+
+        assert_eq!(normalized.mode, "single");
+        let summary = normalized.summary.expect("missing fallback summary");
+        assert!(summary.ends_with("..."));
+        assert!(summary.len() > NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS);
     }
 
     #[test]

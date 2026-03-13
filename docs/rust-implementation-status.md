@@ -64,7 +64,7 @@ This document tracks Rust implementation progress against the technology-indepen
 | EML-004 | Implemented | Rust only processes messages identified as mailing-list emails via `List-Unsubscribe`. |
 | EML-005 | Implemented | Mailing-list feeds are auto-created on first sender encounter under the root folder. |
 | EML-006 | Implemented | Newsletter HTML is cleaned before persistence and stored in reader-friendly form. |
-| EML-007 | Partial | Rust supports optional LLM-based newsletter parsing with OpenAI as the current provider, trims input to 5000 characters, supports `single` and `multi` modes, and caps multi-item expansion at 25 items; however, the stronger requirement that the parser classify newsletters into `single` versus `multi` and always return both cleaned content and a concise generated summary in `single` mode is not strictly enforced. |
+| EML-007 | Implemented | Rust now trims newsletter input to 5000 characters before LLM parsing, normalizes ambiguous or malformed LLM output into deterministic `single` versus `multi` modes, requires at least two distinct linked items for `multi`, and guarantees usable cleaned content plus a concise summary in `single` mode. |
 | EML-008 | Implemented | Rust falls back to creating a single newsletter article from the cleaned email content when LLM-based parsing is disabled, fails, returns invalid JSON, or yields no usable multi-item entries. |
 | EML-009 | Implemented | Rust cleans up stale newsletter entries only when older than 90 days, read, and unstarred. |
 | SEC-001 | Implemented | Scheme allowlist validation implemented. |

@@ -215,6 +215,8 @@ Source: `rust/src/api.rs`
 | TC-RUST-083 | Rust newsletter stale cleanup gate | Seed newsletter and non-newsletter articles across old/new, read/unread, and starred/unstarred states. | Only stale read unstarred newsletter articles are deleted. |
 | TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
 | TC-RUST-085 | Rust mocked newsletter journey | Run the Rust CLI credential command and update command with a test-only mocked IMAP mailbox file. | Newsletter feed/items are created through the full subprocess path without requiring a real mailbox. |
+| TC-RUST-090 | Rust newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
+| TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
 
 ### Rust Newsletter Processing Test Cases
 Source: `rust/src/email.rs`
@@ -227,6 +229,8 @@ Source: `rust/src/email.rs`
 | TC-RUST-082 | Rust newsletter LLM single-item mode | Build newsletter articles from a mocked Rust LLM parse result with `mode=single`. | A single persisted article uses the cleaned LLM content and summary. |
 | TC-RUST-083 | Rust newsletter stale cleanup gate | Seed newsletter and non-newsletter articles across old/new, read/unread, and starred/unstarred states. | Only stale read unstarred newsletter articles are deleted. |
 | TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
+| TC-RUST-090 | Rust newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
+| TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
 
 ### Rust Migration Bootstrap Test Cases
 Source: `rust/src/db.rs`
