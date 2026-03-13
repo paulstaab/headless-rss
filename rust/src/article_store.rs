@@ -66,7 +66,10 @@ pub async fn article_record_from_feed_entry(
         .content
         .as_ref()
         .and_then(|content| content.body.clone());
-    let summary = entry.summary.as_ref().map(|summary| summary.content.clone());
+    let summary = entry
+        .summary
+        .as_ref()
+        .map(|summary| summary.content.clone());
     let title = entry.title.as_ref().map(|title| title.content.clone());
     let url = entry.links.first().map(|link| link.href.clone());
     let author = entry.authors.first().map(|author| author.name.clone());

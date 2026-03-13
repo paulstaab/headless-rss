@@ -331,7 +331,11 @@ async fn insert_article_from_entry(
     Ok(())
 }
 
-async fn move_feed(pool: &SqlitePool, feed_id: i64, folder_id: Option<i64>) -> ApiResult<StatusCode> {
+async fn move_feed(
+    pool: &SqlitePool,
+    feed_id: i64,
+    folder_id: Option<i64>,
+) -> ApiResult<StatusCode> {
     let feed_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE id = ? LIMIT 1")
         .bind(feed_id)
         .fetch_optional(pool)

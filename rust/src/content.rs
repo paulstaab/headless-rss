@@ -313,6 +313,7 @@ async fn extract_article(
     extracted
 }
 
+/// Requests a structured summary for extracted article content when LLM support is enabled.
 async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Option<String> {
     config.openai_api_key.as_deref()?;
 
@@ -324,10 +325,7 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
 
     let response_text = llm::request_chat_completion_content(
         config,
-        build_openai_summary_payload(
-            &config.openai_model,
-            &trimmed_text,
-        ),
+        build_openai_summary_payload(&config.openai_model, &trimmed_text),
         "article summarization",
     )
     .await?;
@@ -349,6 +347,7 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
     Some(format!("{summary} (AI generated)"))
 }
 
+/// Builds the structured-output payload used for article summarization requests.
 fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::Value {
     json!({
         "model": model,

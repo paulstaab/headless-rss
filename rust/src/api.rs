@@ -1,3 +1,5 @@
+//! HTTP API composition for the Rust Nextcloud News compatible service.
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -41,6 +43,7 @@ struct VersionOut {
     version: String,
 }
 
+/// Builds the full Axum router for both supported Nextcloud News API versions.
 pub fn app(state: AppState) -> Router {
     let protected_v1_2 = v1_2::router(state.config.clone());
     let protected_v1_3 = v1_3::router(state.config.clone());
@@ -54,6 +57,7 @@ pub fn app(state: AppState) -> Router {
         .layer(CorsLayer::permissive())
 }
 
+/// Logs each incoming API request together with the response status and duration.
 async fn log_user_interaction(request: Request<Body>, next: Next) -> Response {
     let method = request.method().clone();
     let uri = request.uri().clone();
@@ -72,10 +76,12 @@ async fn log_user_interaction(request: Request<Body>, next: Next) -> Response {
     response
 }
 
+/// Returns the unauthenticated service health check response.
 async fn status() -> Json<StatusOut> {
     Json(StatusOut { status: "ok" })
 }
 
+/// Returns the configured application version for Nextcloud News compatibility.
 async fn get_version(State(state): State<AppState>) -> Json<VersionOut> {
     Json(VersionOut {
         version: state.config.version.clone(),

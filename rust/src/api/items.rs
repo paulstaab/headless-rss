@@ -185,11 +185,12 @@ pub(super) async fn get_item_content(
     State(state): State<AppState>,
     Path(item_id): Path<i64>,
 ) -> ApiResult<Json<ItemContentOut>> {
-    let content: Option<Option<String>> = sqlx::query_scalar("SELECT content FROM article WHERE id = ?")
-        .bind(item_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(internal_error)?;
+    let content: Option<Option<String>> =
+        sqlx::query_scalar("SELECT content FROM article WHERE id = ?")
+            .bind(item_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(internal_error)?;
 
     let Some(content) = content else {
         return Err(item_not_found());

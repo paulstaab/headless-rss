@@ -14,14 +14,20 @@ pub(super) fn router(config_for_middleware: Arc<Config>) -> Router<AppState> {
         .route("/feeds", post(super::feeds::v1_3_add_feed))
         .route("/feeds/{feed_id}", delete(super::feeds::delete_feed))
         .route("/feeds/{feed_id}/move", post(super::feeds::v1_3_move_feed))
-        .route("/feeds/{feed_id}/rename", post(super::feeds::v1_3_rename_feed))
+        .route(
+            "/feeds/{feed_id}/rename",
+            post(super::feeds::v1_3_rename_feed),
+        )
         .route(
             "/feeds/{feed_id}/read",
             post(super::feeds::v1_3_mark_feed_items_read),
         )
         .route("/folders", get(super::folders::get_folders))
         .route("/folders", post(super::folders::create_folder))
-        .route("/folders/{folder_id}", delete(super::folders::delete_folder))
+        .route(
+            "/folders/{folder_id}",
+            delete(super::folders::delete_folder),
+        )
         .route("/folders/{folder_id}", put(super::folders::rename_folder))
         .route(
             "/folders/{folder_id}/read",
@@ -29,8 +35,14 @@ pub(super) fn router(config_for_middleware: Arc<Config>) -> Router<AppState> {
         )
         .route("/items", get(super::items::get_items))
         .route("/items/updated", get(super::items::get_updated_items))
-        .route("/items/{item_id}/content", get(super::items::get_item_content))
-        .route("/items/{item_id}/read", post(super::items::v1_3_mark_item_as_read))
+        .route(
+            "/items/{item_id}/content",
+            get(super::items::get_item_content),
+        )
+        .route(
+            "/items/{item_id}/read",
+            post(super::items::v1_3_mark_item_as_read),
+        )
         .route(
             "/items/read/multiple",
             post(super::items::v1_3_mark_multiple_items_as_read),
@@ -59,7 +71,10 @@ pub(super) fn router(config_for_middleware: Arc<Config>) -> Router<AppState> {
             "/items/unstar/multiple",
             post(super::items::v1_3_mark_multiple_items_as_unstarred),
         )
-        .route("/items/read", post(super::items::v1_3_mark_all_items_as_read))
+        .route(
+            "/items/read",
+            post(super::items::v1_3_mark_all_items_as_read),
+        )
         .route("/version", get(super::get_version))
         .route_layer(middleware::from_fn_with_state(
             config_for_middleware,

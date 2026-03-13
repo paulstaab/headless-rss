@@ -94,11 +94,12 @@ pub(super) async fn delete_folder(
     State(state): State<AppState>,
     Path(folder_id): Path<i64>,
 ) -> ApiResult<StatusCode> {
-    let folder_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-        .bind(folder_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(internal_error)?;
+    let folder_exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
+            .bind(folder_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(internal_error)?;
 
     if folder_exists.is_none() {
         return Err(folder_not_found());
@@ -146,11 +147,12 @@ pub(super) async fn rename_folder(
         return Err(folder_name_invalid());
     }
 
-    let folder_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-        .bind(folder_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(internal_error)?;
+    let folder_exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
+            .bind(folder_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(internal_error)?;
     if folder_exists.is_none() {
         return Err(folder_not_found());
     }
@@ -182,11 +184,12 @@ pub(super) async fn mark_folder_items_read(
     Path(folder_id): Path<i64>,
     Json(input): Json<MarkAllItemsReadIn>,
 ) -> ApiResult<StatusCode> {
-    let folder_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-        .bind(folder_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(internal_error)?;
+    let folder_exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
+            .bind(folder_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(internal_error)?;
     if folder_exists.is_none() {
         return Err(folder_not_found());
     }
