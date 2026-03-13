@@ -350,7 +350,8 @@ mod tests {
     use axum::Router;
     use axum::http::header as http_header;
     use axum::http::{HeaderMap as AxumHeaderMap, StatusCode};
-    use axum::routing::get;
+    use axum::routing::{get, post};
+    use serde_json::json;
     use sqlx::SqlitePool;
     use tokio::net::TcpListener;
 
@@ -385,7 +386,26 @@ mod tests {
     }
 
     fn test_config() -> Config {
-        Config::from_env()
+        Config {
+            username: None,
+            password: None,
+            version: "dev".to_string(),
+            db_path: ":memory:".to_string(),
+            feed_update_frequency_min: 15,
+            openai_api_key: None,
+            openai_base_url: "https://api.openai.com/v1".to_string(),
+            openai_model: "gpt-5-nano".to_string(),
+            testing_mode: true,
+        }
+    }
+
+    fn test_config_with_llm(base_url: &str) -> Config {
+        Config {
+            openai_api_key: Some("test-key".to_string()),
+            openai_base_url: format!("{base_url}/v1"),
+            openai_model: "test-model".to_string(),
+            ..test_config()
+        }
     }
 
     async fn start_fixture_feed_server() -> String {
@@ -728,8 +748,10 @@ mod tests {
     async fn update_due_feeds_enables_extracted_fulltext_when_quality_is_better() {
         let pool = setup_pool().await;
         let url = start_quality_fixture_feed_server(
-            "Short teaser.",
+            Some("Short teaser."),
+            None,
             "<html><body><article><p>This is a long extracted article body with enough detail to clearly exceed the teaser summary in the feed.</p><p>It contains additional explanation and supporting context.</p></article><footer>Footer</footer></body></html>",
+            None,
         )
         .await;
         sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (8, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
@@ -748,7 +770,7 @@ mod tests {
         .await
         .unwrap();
         assert!(flags.0);
-        assert!(flags.1);
+        assert!(!flags.1);
         assert!(flags.2.is_some());
 
         let content: Option<String> =
@@ -767,8 +789,10 @@ mod tests {
     async fn update_due_feeds_leaves_extraction_disabled_when_quality_is_not_better() {
         let pool = setup_pool().await;
         let url = start_quality_fixture_feed_server(
-            "This feed summary already includes substantial detail about the article contents.",
+            Some("This feed summary already includes substantial detail about the article contents."),
+            None,
             "<html><body><article><p>Short article.</p></article></body></html>",
+            None,
         )
         .await;
         sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (9, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
@@ -791,9 +815,113 @@ mod tests {
         assert!(flags.2.is_some());
     }
 
-    async fn start_quality_fixture_feed_server(entry_summary: &str, article_html: &str) -> String {
-        let entry_summary = entry_summary.to_string();
+    #[tokio::test]
+    async fn update_due_feeds_enables_llm_summary_by_heuristic_when_summary_is_prefix() {
+        let pool = setup_pool().await;
+        let url = start_quality_fixture_feed_server(
+            Some("Lead sentence only."),
+            Some("<p>Lead sentence only. More detail follows in the full article body.</p>"),
+            "<html><body><article><p>Short article.</p></article></body></html>",
+            None,
+        )
+        .await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (10, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let flags: (bool, bool) = sqlx::query_as(
+            "SELECT use_extracted_fulltext, use_llm_summary FROM feed WHERE id = 10",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!flags.0);
+        assert!(flags.1);
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_disables_llm_summary_when_quality_check_says_summary_is_good() {
+        let pool = setup_pool().await;
+        let base_url = start_quality_fixture_feed_server(
+            Some("A good summary."),
+            Some("<p>A good summary. This article contains extra detail for validation.</p>"),
+            "<html><body><article><p>Short article.</p></article></body></html>",
+            Some(r#"{"is_good":true}"#),
+        )
+        .await;
+        let llm_base_url = base_url.trim_end_matches("/atom.xml").to_string();
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (11, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
+            .bind(base_url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, &test_config_with_llm(&llm_base_url), true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let flags: (bool, bool) = sqlx::query_as(
+            "SELECT use_extracted_fulltext, use_llm_summary FROM feed WHERE id = 11",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!flags.0);
+        assert!(!flags.1);
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_replaces_feed_summary_when_llm_quality_check_rejects_it() {
+        let pool = setup_pool().await;
+        let base_url = start_quality_fixture_feed_server(
+            Some("Short teaser only."),
+            Some("<p>Short teaser only. This full article contains enough additional detail to justify generating a better summary from the language model, rather than keeping the feed-provided teaser text.</p><p>More context follows with concrete implementation notes, edge cases, and additional explanation for validation.</p>"),
+            "<html><body><article><p>Short article.</p></article></body></html>",
+            Some(r#"{"is_good":false}"#),
+        )
+        .await;
+        let llm_base_url = base_url.trim_end_matches("/atom.xml").to_string();
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (12, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
+            .bind(base_url.clone())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, &test_config_with_llm(&llm_base_url), true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let flags: (bool, bool) = sqlx::query_as(
+            "SELECT use_extracted_fulltext, use_llm_summary FROM feed WHERE id = 12",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!flags.0);
+        assert!(flags.1);
+
+        let summary: Option<String> = sqlx::query_scalar(
+            "SELECT summary FROM article WHERE feed_id = 12 LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(summary.as_deref(), Some("Fixture summary from mock LLM. (AI generated)"));
+    }
+
+    async fn start_quality_fixture_feed_server(
+        entry_summary: Option<&str>,
+        entry_content: Option<&str>,
+        article_html: &str,
+        llm_response_content: Option<&str>,
+    ) -> String {
+        let entry_summary = entry_summary.map(str::to_string);
+        let entry_content = entry_content.map(str::to_string);
         let article_html = article_html.to_string();
+        let llm_response_content = llm_response_content.map(str::to_string);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let article_url = format!("http://{addr}/article");
@@ -806,11 +934,45 @@ mod tests {
                 }),
             )
             .route(
+                "/v1/chat/completions",
+                post(move |body: String| {
+                    let llm_response_content = llm_response_content.clone();
+                    async move {
+                        let content = if body.contains("\"name\":\"summary_quality\"") {
+                            llm_response_content
+                                .unwrap_or_else(|| r#"{"is_good":false}"#.to_string())
+                        } else {
+                            r#"{"summary":"Fixture summary from mock LLM."}"#.to_string()
+                        };
+                        (
+                            [(http_header::CONTENT_TYPE, "application/json")],
+                            json!({
+                                "choices": [
+                                    {
+                                        "message": {
+                                            "content": content
+                                        }
+                                    }
+                                ]
+                            })
+                            .to_string(),
+                        )
+                    }
+                }),
+            )
+            .route(
                 "/atom.xml",
                 get(move || {
                     let entry_summary = entry_summary.clone();
+                    let entry_content = entry_content.clone();
                     let article_url = article_url.clone();
                     async move {
+                        let summary_xml = entry_summary
+                            .map(|summary| format!("<summary>{summary}</summary>"))
+                            .unwrap_or_default();
+                        let content_xml = entry_content
+                            .map(|content| format!("<content type=\"html\"><![CDATA[{content}]]></content>"))
+                            .unwrap_or_default();
                         (
                             [(http_header::CONTENT_TYPE, "application/atom+xml")],
                             format!(
@@ -825,7 +987,8 @@ mod tests {
         <link href="{article_url}" />
     <id>tag:example.org,2026:quality-entry</id>
     <updated>2026-03-06T00:00:00Z</updated>
-    <summary>{entry_summary}</summary>
+        {summary_xml}
+        {content_xml}
   </entry>
 </feed>"#,
                             ),

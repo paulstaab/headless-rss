@@ -125,6 +125,10 @@ pub async fn maybe_refresh_feed_content_state(
                 .as_ref()
                 .map(|summary| summary.content.as_str())
         });
+    let feed_summary = sample
+        .summary
+        .as_ref()
+        .map(|summary| summary.content.as_str());
     let article_url = sample.links.first().map(|link| link.href.as_str());
     let extracted_text = match article_url {
         Some(url) => extract_article(article_http_client, config, url).await,
@@ -132,10 +136,17 @@ pub async fn maybe_refresh_feed_content_state(
     };
     let use_extracted_fulltext =
         is_extracted_content_preferred(extracted_text.as_deref(), feed_content);
+    let final_article_text = if use_extracted_fulltext {
+        extracted_text.as_deref()
+    } else {
+        feed_content
+    };
+    let use_llm_summary =
+        should_enable_llm_summary(config, final_article_text, feed_summary).await;
     let next_state = FeedContentState {
         last_quality_check: Some(unix_now()),
         use_extracted_fulltext,
-        use_llm_summary: use_extracted_fulltext,
+        use_llm_summary,
     };
 
     sqlx::query(
@@ -190,6 +201,10 @@ pub async fn enrich_article_content(
                 }
             }
         }
+    }
+
+    if use_llm_summary {
+        final_summary = None;
     }
 
     if final_summary.is_none() {
@@ -273,13 +288,61 @@ fn build_missing_summary(
     }
 
     if use_llm_summary && llm_enabled {
-        return llm_summary;
+        if let Some(summary) = llm_summary {
+            return Some(summary);
+        }
     }
 
     Some(format!(
         "{}...",
         truncate_chars(content, LLM_SUMMARY_MIN_CHARS)
     ))
+}
+
+async fn should_enable_llm_summary(
+    config: &Config,
+    final_article_text: Option<&str>,
+    feed_summary: Option<&str>,
+) -> bool {
+    let normalized_summary = normalize_text(feed_summary);
+    if normalized_summary.is_empty() {
+        return true;
+    }
+
+    let normalized_article_text = normalize_text(final_article_text);
+    if normalized_article_text.is_empty() {
+        return false;
+    }
+
+    if config.llm_enabled() {
+        let article_text = plain_text(final_article_text);
+        let summary_text = plain_text(feed_summary);
+        if let Some(is_good) =
+            is_good_standalone_summary_with_llm(config, &article_text, &summary_text).await
+        {
+            return !is_good;
+        }
+    }
+
+    should_enable_llm_summary_by_heuristic(feed_summary, final_article_text)
+}
+
+fn should_enable_llm_summary_by_heuristic(
+    feed_summary: Option<&str>,
+    final_article_text: Option<&str>,
+) -> bool {
+    let normalized_summary = normalize_text(feed_summary);
+    if normalized_summary.is_empty() {
+        return true;
+    }
+
+    let normalized_article_text = normalize_text(final_article_text);
+    if normalized_article_text.is_empty() {
+        return false;
+    }
+
+    normalized_article_text.chars().count() > normalized_summary.chars().count()
+        && normalized_article_text.starts_with(&normalized_summary)
 }
 
 /// Fetches a remote article document and extracts cleaned main-content HTML.
@@ -325,8 +388,8 @@ async fn extract_article(
 async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Option<String> {
     config.openai_api_key.as_deref()?;
 
-    let normalized_text = strip_html(article_text);
-    let trimmed_text = truncate_chars(&normalized_text, ARTICLE_MAX_CHARS);
+    let plain_text = plain_text(Some(article_text));
+    let trimmed_text = truncate_chars(&plain_text, ARTICLE_MAX_CHARS);
     if trimmed_text.trim().is_empty() {
         return None;
     }
@@ -353,6 +416,37 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
         .filter(|summary| !summary.is_empty())?;
 
     Some(format!("{summary} (AI generated)"))
+}
+
+async fn is_good_standalone_summary_with_llm(
+    config: &Config,
+    article_text: &str,
+    summary: &str,
+) -> Option<bool> {
+    config.openai_api_key.as_deref()?;
+
+    let article_text = plain_text(Some(article_text));
+    let summary = plain_text(Some(summary));
+    if article_text.trim().is_empty() || summary.trim().is_empty() {
+        return None;
+    }
+
+    let response_text = llm::request_chat_completion_content(
+        config,
+        build_openai_summary_quality_payload(&config.openai_model, &article_text, &summary),
+        "summary quality evaluation",
+    )
+    .await?;
+
+    let parsed: serde_json::Value = match serde_json::from_str(&response_text) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            tracing::warn!(error = %err, "summary quality response was not valid JSON");
+            return None;
+        }
+    };
+
+    parsed.get("is_good").and_then(|value| value.as_bool())
 }
 
 /// Builds the structured-output payload used for article summarization requests.
@@ -386,6 +480,55 @@ fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::
     })
 }
 
+fn build_openai_summary_quality_payload(
+    model: &str,
+    article_text: &str,
+    summary: &str,
+) -> serde_json::Value {
+    json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are evaluating whether a summary is a good standalone summary of an article. Answer with is_good=true if it captures the main points and is not just a lead-in."
+            },
+            {
+                "role": "user",
+                "content": format!("Article:\n{article_text}\n\nSummary:\n{summary}")
+            }
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "summary_quality",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "is_good": {"type": "boolean"}
+                    },
+                    "required": ["is_good"],
+                    "additionalProperties": false
+                }
+            }
+        }
+    })
+}
+
+fn plain_text(text: Option<&str>) -> String {
+    let Some(text) = text else {
+        return String::new();
+    };
+
+    static WHITESPACE_REGEX: OnceLock<Regex> = OnceLock::new();
+
+    let stripped = strip_html(text);
+    WHITESPACE_REGEX
+        .get_or_init(|| Regex::new(r"\s+").expect("valid whitespace regex"))
+        .replace_all(&stripped, " ")
+        .trim()
+        .to_string()
+}
+
 /// Removes HTML tags so LLM prompts operate on readable text instead of markup.
 fn strip_html(text: &str) -> String {
     static HTML_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -412,7 +555,8 @@ fn unix_now() -> i64 {
 mod tests {
     use super::{
         build_missing_summary, extract_article_from_html, extract_first_image_url,
-        is_extracted_content_preferred, normalize_text,
+        is_extracted_content_preferred, normalize_text, plain_text,
+        should_enable_llm_summary_by_heuristic,
     };
     use crate::llm::openai_chat_completions_url;
 
@@ -483,6 +627,43 @@ mod tests {
         .expect("expected llm summary");
 
         assert_eq!(summary, "Generated summary (AI generated)");
+    }
+
+    #[test]
+    fn summary_generation_falls_back_to_truncation_when_llm_returns_none() {
+        let content = "a".repeat(200);
+        let summary = build_missing_summary(&content, true, true, None).expect("expected summary");
+        assert_eq!(summary, format!("{}...", "a".repeat(160)));
+    }
+
+    #[test]
+    fn summary_quality_heuristic_enables_llm_when_summary_is_article_prefix() {
+        assert!(should_enable_llm_summary_by_heuristic(
+            Some("Lead sentence only."),
+            Some("Lead sentence only. More detail follows in the full article body.")
+        ));
+    }
+
+    #[test]
+    fn summary_quality_heuristic_disables_llm_when_summary_is_not_prefix() {
+        assert!(!should_enable_llm_summary_by_heuristic(
+            Some("Different summary."),
+            Some("Lead sentence only. More detail follows in the full article body.")
+        ));
+    }
+
+    #[test]
+    fn summary_quality_heuristic_enables_llm_when_summary_is_missing() {
+        assert!(should_enable_llm_summary_by_heuristic(
+            None,
+            Some("Lead sentence only. More detail follows in the full article body.")
+        ));
+    }
+
+    #[test]
+    fn plain_text_strips_html_and_preserves_word_case() {
+        let result = plain_text(Some("<p>Hello</p>\n<strong>World</strong>"));
+        assert_eq!(result, "Hello World");
     }
 
     #[test]
