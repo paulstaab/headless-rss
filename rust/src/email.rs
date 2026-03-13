@@ -17,6 +17,7 @@ use sqlx::{FromRow, SqlitePool};
 use std::env;
 use std::fs;
 
+use crate::article_store::{self, ArticleRecord, InsertArticleOutcome};
 use crate::config::Config;
 use crate::content;
 use crate::http_client;
@@ -148,7 +149,7 @@ where
 
 /// Remove stale newsletter entries that are older than 90 days, read, and unstarred.
 pub async fn clean_up_old_newsletters(pool: &SqlitePool, now_ts: Option<i64>) -> Result<u64> {
-    let cutoff = now_ts.unwrap_or_else(unix_now) - NINETY_DAYS;
+    let cutoff = now_ts.unwrap_or_else(article_store::unix_now) - NINETY_DAYS;
     let result = sqlx::query(
         "DELETE FROM article WHERE feed_id IN (SELECT id FROM feed WHERE is_mailing_list = 1) AND last_modified < ? AND unread = 0 AND starred = 0",
     )
@@ -203,38 +204,13 @@ async fn process_email_message(
 
     let mut inserted = 0usize;
     for article in articles {
-        let guid_hash = format!("{:x}", md5::compute(article.guid.as_bytes()));
-        let existing: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
-                .bind(&guid_hash)
-                .fetch_optional(pool)
-                .await
-                .context("failed to check existing newsletter article")?;
-
-        if existing.is_some() {
-            continue;
+        match article_store::insert_article_if_new(pool, article.into_record(feed_id))
+            .await
+            .context("failed to insert newsletter article")?
+        {
+            InsertArticleOutcome::Inserted { .. } => inserted += 1,
+            InsertArticleOutcome::Duplicate { .. } => {}
         }
-
-        sqlx::query(
-            "INSERT INTO article (title, content, author, summary, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, 0, 1, ?, ?)",
-        )
-        .bind(article.title)
-        .bind(article.content)
-        .bind(article.author)
-        .bind(article.summary)
-        .bind(article.content_hash)
-        .bind(feed_id)
-        .bind(article.guid)
-        .bind(guid_hash)
-        .bind(article.last_modified)
-        .bind(article.media_thumbnail)
-        .bind(article.pub_date)
-        .bind(article.updated_date)
-        .bind(article.url)
-        .execute(pool)
-        .await
-        .context("failed to insert newsletter article")?;
-        inserted += 1;
     }
 
     Ok(inserted)
@@ -253,6 +229,29 @@ struct ArticleDraft {
     last_modified: i64,
     pub_date: i64,
     updated_date: i64,
+}
+
+impl ArticleDraft {
+    /// Converts a newsletter-specific draft into the shared persistence model.
+    fn into_record(self, feed_id: i64) -> ArticleRecord {
+        ArticleRecord {
+            title: Some(self.title),
+            content: Some(self.content),
+            author: Some(self.author),
+            summary: self.summary,
+            content_hash: self.content_hash,
+            feed_id,
+            guid_hash: article_store::guid_hash(&self.guid),
+            guid: self.guid,
+            last_modified: self.last_modified,
+            media_thumbnail: self.media_thumbnail,
+            pub_date: Some(self.pub_date),
+            updated_date: Some(self.updated_date),
+            url: self.url,
+            starred: false,
+            unread: true,
+        }
+    }
 }
 
 /// Builds one or more article drafts from a cleaned newsletter body and optional LLM parse result.
@@ -357,7 +356,7 @@ async fn create_article_draft(
         false,
     )
     .await;
-    let now_ts = unix_now();
+    let now_ts = article_store::unix_now();
     let guid = match url.as_deref() {
         Some(url) => format!("{from_address}:{subject}:{url}"),
         None => format!("{from_address}:{subject}"),
@@ -399,7 +398,7 @@ async fn find_or_create_mailing_list_feed(
     )
     .bind(from_address)
     .bind(feed_title)
-    .bind(unix_now())
+    .bind(article_store::unix_now())
     .bind(root_id)
     .execute(pool)
     .await
@@ -814,14 +813,6 @@ fn whitespace_regex() -> &'static Regex {
 /// Truncates text by character count while preserving valid UTF-8 boundaries.
 fn truncate_chars(text: &str, limit: usize) -> String {
     text.chars().take(limit).collect()
-}
-
-/// Returns the current Unix timestamp in seconds.
-fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

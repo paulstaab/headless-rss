@@ -1,10 +1,8 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use anyhow::{Context, Result};
-use feed_rs::model::Entry;
 use rand::Rng;
 use sqlx::{FromRow, SqlitePool};
 
+use crate::article_store::{self, InsertArticleOutcome};
 use crate::config::Config;
 use crate::content::{self, FeedContentState};
 use crate::db;
@@ -50,7 +48,7 @@ pub async fn update_due_feeds(
     config: &Config,
     testing_mode: bool,
 ) -> Result<usize> {
-    let now_ts = unix_now();
+    let now_ts = article_store::unix_now();
     let feeds: Vec<FeedToUpdate> = sqlx::query_as(
         "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
     )
@@ -202,7 +200,7 @@ async fn update_single_feed(
 
     let removed = cleanup_stale_feed_articles(pool, feed_id, &current_feed_guid_hashes).await?;
 
-    let now_ts = unix_now();
+    let now_ts = article_store::unix_now();
     let next_update_time = calculate_next_update_time(pool, feed_id, now_ts).await?;
     sqlx::query(
         "UPDATE feed SET update_error_count = 0, last_update_error = NULL, next_update_time = ? WHERE id = ?",
@@ -230,7 +228,7 @@ async fn cleanup_stale_feed_articles(
     feed_id: i64,
     current_feed_guid_hashes: &[String],
 ) -> Result<u64> {
-    let stale_before = unix_now() - NINETY_DAYS;
+    let stale_before = article_store::unix_now() - NINETY_DAYS;
 
     let result = if current_feed_guid_hashes.is_empty() {
         sqlx::query(
@@ -311,90 +309,40 @@ async fn insert_article_from_entry(
     article_http_client: &reqwest::Client,
     config: &Config,
     feed_id: i64,
-    entry: &Entry,
+    entry: &feed_rs::model::Entry,
     current_feed_guid_hashes: &mut Vec<String>,
     content_state: FeedContentState,
 ) -> Result<bool> {
-    let guid = if entry.id.is_empty() {
-        entry
-            .links
-            .first()
-            .map(|l| l.href.clone())
-            .or_else(|| entry.title.as_ref().map(|t| t.content.clone()))
-    } else {
-        Some(entry.id.clone())
-    };
-
-    let Some(guid) = guid else {
+    let Some(article) = article_store::article_record_from_feed_entry(
+        article_http_client,
+        config,
+        feed_id,
+        entry,
+        content_state,
+    )
+    .await
+    else {
         tracing::debug!(feed_id, "skipping entry without guid/link/title");
         return Ok(false);
     };
 
-    let guid_hash = format!("{:x}", md5::compute(guid.as_bytes()));
-    current_feed_guid_hashes.push(guid_hash.clone());
-    let existing: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
-            .bind(&guid_hash)
-            .fetch_optional(pool)
-            .await
-            .context("failed to check existing article")?;
+    current_feed_guid_hashes.push(article.guid_hash.clone());
 
-    if existing.is_some() {
-        tracing::debug!(feed_id, guid_hash, "skipping duplicate entry");
-        return Ok(false);
+    match article_store::insert_article_if_new(pool, article)
+        .await
+        .context("failed to insert article")?
+    {
+        InsertArticleOutcome::Inserted { .. } => Ok(true),
+        InsertArticleOutcome::Duplicate { guid_hash } => {
+            tracing::debug!(feed_id, guid_hash, "skipping duplicate entry");
+            Ok(false)
+        }
     }
-
-    let content = entry
-        .content
-        .as_ref()
-        .and_then(|content| content.body.clone());
-    let summary = entry.summary.as_ref().map(|s| s.content.clone());
-    let title = entry.title.as_ref().map(|t| t.content.clone());
-    let url = entry.links.first().map(|l| l.href.clone());
-    let author = entry.authors.first().map(|a| a.name.clone());
-    let now_ts = unix_now();
-    let updated = entry.updated.map(|dt| dt.timestamp()).unwrap_or(now_ts);
-    let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
-    let enriched = content::enrich_article_content(
-        article_http_client,
-        config,
-        url.as_deref(),
-        content,
-        summary,
-        None,
-        content_state.use_extracted_fulltext,
-        content_state.use_llm_summary,
-    )
-    .await;
-
-    sqlx::query(
-        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, 0, 1, ?, ?, ?)",
-    )
-    .bind(title)
-    .bind(enriched.content)
-    .bind(author)
-    .bind(enriched.content_hash)
-    .bind(feed_id)
-    .bind(guid)
-    .bind(guid_hash)
-    .bind(now_ts)
-    .bind(enriched.media_thumbnail)
-    .bind(published)
-    .bind(updated)
-    .bind(url)
-    .bind(enriched.summary)
-    .execute(pool)
-    .await
-    .context("failed to insert article")?;
-
-    Ok(true)
 }
 
+#[cfg(test)]
 fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or_default()
+    article_store::unix_now()
 }
 
 #[cfg(test)]

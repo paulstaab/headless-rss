@@ -1,4 +1,5 @@
 mod api;
+mod article_store;
 mod config;
 mod content;
 mod db;
