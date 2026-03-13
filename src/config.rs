@@ -11,6 +11,7 @@ pub struct Config {
     pub openai_api_key: Option<String>,
     pub openai_base_url: String,
     pub openai_model: String,
+    pub openai_timeout_seconds: u64,
     pub testing_mode: bool,
 }
 
@@ -28,6 +29,7 @@ impl Config {
             openai_base_url: env::var("OPENAI_BASE_URL")
                 .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
             openai_model: env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-nano".to_string()),
+            openai_timeout_seconds: get_env_u64("OPENAI_TIMEOUT_SECONDS", 30),
             testing_mode: env::var("TESTING_MODE")
                 .ok()
                 .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
@@ -52,6 +54,18 @@ fn get_env_int(name: &str, default: i64) -> i64 {
         .unwrap_or(default)
 }
 
+fn get_env_u64(name: &str, default: u64) -> u64 {
+    env::var(name)
+        .ok()
+        .as_deref()
+        .and_then(parse_positive_u64)
+        .unwrap_or(default)
+}
+
+fn parse_positive_u64(value: &str) -> Option<u64> {
+    value.trim().parse::<u64>().ok().filter(|value| *value > 0)
+}
+
 fn get_env_str(name: &str) -> Option<String> {
     env::var(name)
         .ok()
@@ -69,4 +83,21 @@ fn default_db_path() -> String {
     }
 
     "data/headless-rss.sqlite3".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_positive_u64;
+
+    #[test]
+    fn parse_positive_u64_accepts_positive_integer() {
+        assert_eq!(parse_positive_u64("30"), Some(30));
+    }
+
+    #[test]
+    fn parse_positive_u64_rejects_zero_and_invalid_values() {
+        assert_eq!(parse_positive_u64("0"), None);
+        assert_eq!(parse_positive_u64("-5"), None);
+        assert_eq!(parse_positive_u64("abc"), None);
+    }
 }

@@ -30,7 +30,7 @@ docker run -d --rm --user 9999 --init \
 
 `FEED_UPDATE_FREQUENCY_MIN` controls the periodic update loop and defaults to `15`.
 
-Set `OPENAI_API_KEY` to enable AI summaries and newsletter parsing. `OPENAI_MODEL` defaults to `gpt-5-nano`, and `OPENAI_BASE_URL` can target an OpenAI-compatible endpoint.
+Set `OPENAI_API_KEY` to enable AI summaries and newsletter parsing. `OPENAI_MODEL` defaults to `gpt-5-nano`, `OPENAI_BASE_URL` can target an OpenAI-compatible endpoint, and `OPENAI_TIMEOUT_SECONDS` defaults to `30`.
 
 ## Local Development
 

@@ -8,7 +8,6 @@ use serde::Deserialize;
 
 use crate::config::Config;
 
-const OPENAI_TIMEOUT_SECONDS: u64 = 10;
 const OPENAI_LOG_BODY_PREVIEW_CHARS: usize = 400;
 
 #[derive(Debug, Deserialize)]
@@ -69,7 +68,7 @@ pub async fn request_chat_completion_content(
     let api_key = config.openai_api_key.as_deref()?;
 
     let client = match Client::builder()
-        .timeout(Duration::from_secs(OPENAI_TIMEOUT_SECONDS))
+        .timeout(Duration::from_secs(config.openai_timeout_seconds))
         .build()
     {
         Ok(client) => client,
@@ -99,6 +98,7 @@ pub async fn request_chat_completion_content(
                 is_timeout = err.is_timeout(),
                 is_connect = err.is_connect(),
                 is_request = err.is_request(),
+                timeout_seconds = config.openai_timeout_seconds,
                 url = %request_url,
                 operation,
                 "OpenAI request failed"

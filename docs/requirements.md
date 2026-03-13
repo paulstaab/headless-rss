@@ -143,8 +143,8 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 
 ### Configuration
 - `CFG-001`: Runtime configuration shall be sourced from environment variables.
-- `CFG-002`: Supported variables shall include authentication settings, feed update frequency, service version, and provider-specific LLM configuration.
-- `CFG-003`: Defaults shall include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, and a default LLM model identifier.
+- `CFG-002`: Supported variables shall include authentication settings, feed update frequency, service version, and provider-specific LLM configuration including request timeout.
+- `CFG-003`: Defaults shall include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, `OPENAI_TIMEOUT_SECONDS=30`, and a default LLM model identifier.
 
 ### CLI
 - `CLI-001`: A CLI `update` command shall initialize persistent storage access and execute a refresh cycle.

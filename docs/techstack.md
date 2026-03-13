@@ -41,6 +41,7 @@ This document lists the technology and tooling choices for headless-rss.
 	- `OPENAI_API_KEY`
 	- `OPENAI_BASE_URL`
 	- `OPENAI_MODEL`
+	- `OPENAI_TIMEOUT_SECONDS`
 
 ## Security
 - Basic auth handling in API layer
