@@ -53,27 +53,28 @@ This document tracks Rust implementation progress against the technology-indepen
 | ITEM-009 | Implemented | Boundary read operations by newest item ID implemented. |
 | CNT-001 | Implemented | First image extraction from HTML content implemented. |
 | CNT-002 | Implemented | Rust article ingestion now supports optional full-text extraction from article URLs using Mozilla Readability via `readability-js`. |
-| CNT-003 | Implemented | Rust updater and feed-create paths now run monthly feed-quality evaluation and persist the decision flags. |
-| CNT-004 | Implemented | Rust only enables `use_llm_summary` when extracted full-text quality is sufficient. |
-| CNT-005 | Implemented | Rust supports optional OpenAI-backed article summary generation when `OPENAI_API_KEY` is configured. |
+| CNT-003 | Implemented | Rust updater and feed-create paths run monthly feed-quality evaluation, compare feed content with extracted article content using the 2x threshold, and persist the decision flags and timestamp. |
+| CNT-004 | Partial | Rust evaluates both flags in the same periodic pass, but `use_llm_summary` is not independently quality-checked yet; it is still derived directly from `use_extracted_fulltext` rather than being decided from feed-summary quality against the final chosen article text or the heuristic fallback. |
+| CNT-005 | Implemented | Rust supports optional LLM-based article summary generation; the current provider is OpenAI, enabled via provider-specific configuration and used only when summarization is requested. |
 | CNT-006 | Implemented | Rust appends ` (AI generated)` to successful LLM summaries. |
-| CNT-007 | Implemented | Rust falls back to truncation when LLM summarization is disabled and content is long. |
+| CNT-007 | Partial | Rust copies short content directly and truncates long content when LLM summarization is not requested or not enabled, but when LLM summarization is attempted and returns no usable summary it currently leaves the summary unset instead of falling back to truncation. |
 | EML-001 | Implemented | Email credentials storage path exists. |
 | EML-002 | Implemented | IMAP connectivity/login validation before persistence exists. |
 | EML-003 | Implemented | Update cycles now fetch unread IMAP messages from configured mailboxes and persist newsletter articles; journey coverage includes a mocked IMAP subprocess flow. |
 | EML-004 | Implemented | Rust only processes messages identified as mailing-list emails via `List-Unsubscribe`. |
 | EML-005 | Implemented | Mailing-list feeds are auto-created on first sender encounter under the root folder. |
 | EML-006 | Implemented | Newsletter HTML is cleaned before persistence and stored in reader-friendly form. |
-| EML-007 | Implemented | Rust supports LLM-driven newsletter parsing for `single` and `multi` modes, capped to 25 items. |
-| EML-008 | Implemented | Rust cleans up stale newsletter entries only when older than 90 days, read, and unstarred. |
+| EML-007 | Partial | Rust supports optional LLM-based newsletter parsing with OpenAI as the current provider, trims input to 5000 characters, supports `single` and `multi` modes, and caps multi-item expansion at 25 items; however, the stronger requirement that the parser classify newsletters into `single` versus `multi` and always return both cleaned content and a concise generated summary in `single` mode is not strictly enforced. |
+| EML-008 | Implemented | Rust falls back to creating a single newsletter article from the cleaned email content when LLM-based parsing is disabled, fails, returns invalid JSON, or yields no usable multi-item entries. |
+| EML-009 | Implemented | Rust cleans up stale newsletter entries only when older than 90 days, read, and unstarred. |
 | SEC-001 | Implemented | Scheme allowlist validation implemented. |
 | SEC-002 | Implemented | IP/DNS SSRF protections implemented. |
 | SEC-003 | Implemented | Localhost allowance is limited to testing mode. |
 | SEC-004 | Implemented | Shared `ssrf` module used by API and updater paths. |
 | SEC-005 | Implemented | Basic auth conditional behavior implemented. |
 | CFG-001 | Implemented | Environment-based runtime config exists. |
-| CFG-002 | Implemented | Required configuration variables supported. |
-| CFG-003 | Implemented | Defaults (`dev`, `15`, `gpt-5-nano`) configured. |
+| CFG-002 | Implemented | Rust supports the required runtime categories including authentication, feed update frequency, service version, and provider-specific LLM configuration; the current implementation uses OpenAI-specific environment variables. |
+| CFG-003 | Implemented | Rust defaults include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, and the default LLM model identifier `gpt-5-nano`. |
 | CLI-001 | Implemented | `update` command exists and runs updater. |
 | CLI-002 | Implemented | `add-email-credentials` command arguments are required. |
 | CLI-003 | Implemented | Validation failures return user-visible errors. |

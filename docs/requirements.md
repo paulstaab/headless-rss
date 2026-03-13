@@ -89,11 +89,32 @@ Implementation progress is tracked separately in `docs/rust-implementation-statu
 ### Content Extraction And Summarization
 - `CNT-001`: If feed metadata does not provide a thumbnail, the system shall extract the first image URL from HTML content when available.
 - `CNT-002`: The system shall support optional full-text extraction from article URLs.
-- `CNT-003`: Feed content quality evaluation shall run periodically (about monthly) and decide whether extracted full text should be used.
-- `CNT-004`: `use_llm_summary` shall only be enabled when full-text extraction quality is sufficient.
-- `CNT-005`: Optional LLM-generated summaries shall be supported when `OPENAI_API_KEY` is configured.
-- `CNT-006`: LLM-generated summaries shall include the suffix ` (AI generated)`.
-- `CNT-007`: If LLM summarization is disabled and content is long, summary generation shall fall back to truncation.
+- `CNT-003`: Feed content quality evaluation:
+  - shall run when `last_quality_check` is missing or older than about 30 days,
+  - shall use a representative feed entry that has both a link and feed-provided content or summary,
+  - shall evaluate `use_extracted_fulltext` and `use_llm_summary` in the same periodic quality-check pass,
+  - shall compare normalized feed content against extracted article content from the selected article URL,
+  - shall treat extracted full text as higher quality only when the normalized extracted text is non-empty and at least twice as long as the normalized feed content,
+  - shall persist the quality-check timestamp after a completed evaluation.
+- `CNT-004`: Full-text and LLM summary enablement for feeds during quality evaluation:
+  - `use_extracted_fulltext` shall be enabled only when feed content quality evaluation judges extracted full text to be higher quality,
+  - `use_llm_summary` shall be evaluated independently of `use_extracted_fulltext`, after the content-quality decision determines the final article text to assess,
+  - `use_llm_summary=true` shall mean that feed-provided summaries are not good enough and LLM-generated summaries should be used for that feed,
+  - when LLM support is configured, the summary-quality check shall ask the LLM whether the feed-provided summary is a good standalone summary of the final chosen article text,
+  - when LLM support is configured, `use_llm_summary` shall be enabled if the feed summary is missing or judged not good enough, and disabled if the feed summary is judged good enough,
+  - when LLM support is not configured, the summary-quality check shall fall back to a heuristic that enables `use_llm_summary` when the normalized feed summary is missing or closely matches the beginning of the final chosen article text.
+- `CNT-005`: Optional LLM-based article summarization when loading new articles:
+  - shall be enabled only when LLM support is configured and LLM summarization is enabled for the articles feed,
+  - shall strip HTML from article content before sending it to the model,
+  - shall truncate article text to the first 8000 characters before LLM summarization,
+  - shall request a concise plain-text summary in structured JSON form.
+- `CNT-006`: Successful LLM-generated summaries shall:
+  - be accepted only when a non-empty `summary` value is returned,
+  - include the suffix ` (AI generated)`.
+- `CNT-007`: Automatic summary generation for articles without an existing summary:
+  - shall copy the full article content into the summary when content length is below 160 characters,
+  - shall use LLM summarization only when content length is at least 160 characters and LLM summarization is both requested and enabled,
+  - shall fall back to the first 160 characters plus `...` when content is long and LLM summarization is not requested, not enabled, or does not return a usable summary.
 
 ### Email Newsletter Ingestion
 - `EML-001`: The system shall store IMAP credentials via CLI/API-internal paths.
@@ -102,8 +123,16 @@ Implementation progress is tracked separately in `docs/rust-implementation-statu
 - `EML-004`: Only messages identified as mailing-list emails (for example via `List-Unsubscribe`) shall be treated as newsletters.
 - `EML-005`: Mailing-list feeds shall be auto-created on first encounter of a sender.
 - `EML-006`: Newsletter HTML shall be cleaned before article persistence.
-- `EML-007`: When LLM support is enabled, newsletter parsing shall support single-article mode and multi-item mode (up to 25 items).
-- `EML-008`: Stale newsletter entries shall be eligible for cleanup only when older than 90 days, read, and unstarred.
+- `EML-007`: Optional LLM-based newsletter parsing:
+  - Optional LLM-based newsletter parsing shall be enabled only when LLM support is configured.
+  - Before LLM-based newsletter parsing, newsletter content shall be truncated to the first 5000 characters.
+  - LLM-based newsletter parsing shall support `single` mode and `multi` mode.
+  - If a newsletter is a collection of links to different articles, it shall be parsed in `multi` mode. Otherwise, it shall be parsed in `single` mode.
+  - In `single` mode, the parser should return the cleaned newsletter content as article and a concise, generated summary.
+  - In `multi` mode, the parser should return an list of articles linked in the newsletter, so that they can be shown as separate entries in the generated feed.
+  - LLM-based multi-item parsing shall create at most 25 articles from a single newsletter email.
+- `EML-008`: If LLM-based parsing is disabled, fails, returns invalid JSON, or produces no usable multi-item entries, newsletter ingestion shall fall back to creating a single article from the cleaned email content.
+- `EML-009`: Stale newsletter entries shall be eligible for cleanup only when older than 90 days, read, and unstarred.
 
 ### Security
 - `SEC-001`: Remote URL validation shall allow only `http` and `https` schemes.
@@ -114,8 +143,8 @@ Implementation progress is tracked separately in `docs/rust-implementation-statu
 
 ### Configuration
 - `CFG-001`: Runtime configuration shall be sourced from environment variables.
-- `CFG-002`: Supported variables shall include `USERNAME`, `PASSWORD`, `FEED_UPDATE_FREQUENCY_MIN`, `VERSION`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL`.
-- `CFG-003`: Defaults shall include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, and `OPENAI_MODEL=gpt-5-nano`.
+- `CFG-002`: Supported variables shall include authentication settings, feed update frequency, service version, and provider-specific LLM configuration.
+- `CFG-003`: Defaults shall include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, and a default LLM model identifier.
 
 ### CLI
 - `CLI-001`: A CLI `update` command shall initialize persistent storage access and execute a refresh cycle.

@@ -34,6 +34,14 @@ This document lists the technology and tooling choices for the Rust implementati
 - IMAP client: `imap`
 - TLS for IMAP: `native-tls`
 
+## LLM Integration
+- Current LLM provider: `OpenAI`
+- Provider access pattern: OpenAI-compatible chat completions API
+- Environment variables:
+	- `OPENAI_API_KEY`
+	- `OPENAI_BASE_URL`
+	- `OPENAI_MODEL`
+
 ## Security
 - Basic auth handling in API layer
 - Shared SSRF validation module for remote URL fetch paths
