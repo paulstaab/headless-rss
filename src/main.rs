@@ -23,8 +23,8 @@ use api::AppState;
 use config::Config;
 
 #[derive(Parser)]
-#[command(name = "headless-rss-rs")]
-#[command(about = "Rust reimplementation of headless-rss")]
+#[command(name = "headless-rss")]
+#[command(about = "Self-hosted RSS and newsletter aggregator")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,

@@ -751,7 +751,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "headless-rss-rs"
+name = "headless-rss"
 version = "0.1.0"
 dependencies = [
  "anyhow",

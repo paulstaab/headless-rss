@@ -293,7 +293,7 @@ fn random_jitter_seconds() -> i64 {
 
 /// Computes the next refresh interval in seconds from recent publishing frequency.
 ///
-/// Policy (kept in sync with Python implementation):
+/// Cleanup policy for stale feed articles:
 /// - Sparse feeds ($\le 0.1$ articles/day): refresh roughly daily with +/-30m jitter.
 /// - Active feeds: refresh at 4x observed daily rate, capped so interval is at most 12h.
 fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) -> i64 {

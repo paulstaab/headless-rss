@@ -1299,7 +1299,7 @@ fn find_free_port() -> u16 {
 
 /// Resolves the binary path produced by Cargo for this crate.
 fn binary_path() -> PathBuf {
-    PathBuf::from(assert_cmd::cargo::cargo_bin!("headless-rss-rs"))
+    PathBuf::from(assert_cmd::cargo::cargo_bin!("headless-rss"))
 }
 
 /// Encodes an HTTP Basic auth header value.

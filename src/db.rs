@@ -36,7 +36,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        std::env::temp_dir().join(format!("headless-rss-rs-{nonce}.sqlite3"))
+        std::env::temp_dir().join(format!("headless-rss-{nonce}.sqlite3"))
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@
 This document defines the product requirements independent of implementation language.
 The same requirements apply to all implementations.
 
-Implementation progress is tracked separately in `docs/rust-implementation-status.md`.
+Implementation progress is tracked separately in `docs/implementation-status.md`.
 
 ## Related Contracts And Tests
 - API contracts:

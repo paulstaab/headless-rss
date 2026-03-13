@@ -9,6 +9,7 @@ It combines workflow guidance with implementation-aware project conventions.
 - It exposes Nextcloud News compatible APIs for versions `v1-2` and `v1-3`.
 - It includes email newsletter ingestion over IMAP.
 - It supports optional AI-assisted summarization and newsletter parsing via OpenAI.
+- The production implementation is Rust-only.
 
 ## Repository Priorities
 - Keep the project minimal and stable.
@@ -53,26 +54,25 @@ It combines workflow guidance with implementation-aware project conventions.
 
 ## CLI Rules
 - Keep CLI commands functional:
-  - `uv run --dev python -m src.cli update`
-  - `uv run --dev python -m src.cli add-email-credentials --server ... --port ... --username ... --password ...`
+  - `cargo run -- update`
+  - `cargo run -- add-email-credentials --server ... --port ... --username ... --password ...`
 - `add-email-credentials` must validate mailbox connectivity before persisting credentials.
 
 ## Required Workflow
 1. Bootstrap
-- Ensure `uv` is available.
-- Run migrations first.
+- Ensure the Rust toolchain is available.
+- Run `cargo fetch` if dependencies have not been downloaded yet.
 
 2. Develop
 - Prefer small, focused changes.
 - Preserve existing API behavior and response contracts.
 
 3. Validate after changes
-- Run `Execute Migrations` task.
 - Run `Lint` task.
 - Run `Run All Tests` task.
 - Validate CLI:
-  - `uv run --dev python -m src.cli --help`
-  - `uv run --dev python -m src.cli update`
+  - `cargo run -- --help`
+  - `cargo run -- update`
 
 4. Optional end-to-end smoke test
 - Start server.
@@ -97,17 +97,17 @@ When implementing fixes, refactors, or new features, keep documentation synchron
 - If code behavior changes but docs are not updated, treat the task as incomplete.
 
 ## Useful Paths
-- App entrypoint: `src/api/app.py`
+- App entrypoint: `src/main.rs`
 - API version routers:
-  - `src/api/nextcloud_news/v1_2/`
-  - `src/api/nextcloud_news/v1_3/`
+  - `src/api/v1_2.rs`
+  - `src/api/v1_3.rs`
 - Core domain modules:
-  - `src/feed.py`
-  - `src/article.py`
-  - `src/folder.py`
-  - `src/email.py`
-  - `src/content.py`
-- CLI: `src/cli.py`
+  - `src/article_store.rs`
+  - `src/content.rs`
+  - `src/email.rs`
+  - `src/email_credentials.rs`
+  - `src/updater.rs`
+- CLI: `src/main.rs`
 - Tests: `tests/`
 
 ## Notes for Agents

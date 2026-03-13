@@ -20,13 +20,9 @@ jobs:
         components: rustfmt, clippy
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
-      with:
-        workspaces: rust
     - name: Check formatting
-      working-directory: rust
       run: cargo fmt --all -- --check
     - name: Lint with clippy
-      working-directory: rust
       run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
@@ -41,10 +37,7 @@ jobs:
         toolchain: 1.86.0
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
-      with:
-        workspaces: rust
     - name: Run Rust tests
-      working-directory: rust
       run: cargo test --all-targets --all-features
 
   release:

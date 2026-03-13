@@ -1,7 +1,7 @@
-# Rust Tech Stack
+# Tech Stack
 
 ## Purpose
-This document lists the technology and tooling choices for the Rust implementation of headless-rss.
+This document lists the technology and tooling choices for headless-rss.
 
 ## Language And Runtime
 - Rust stable toolchain
@@ -16,7 +16,7 @@ This document lists the technology and tooling choices for the Rust implementati
 ## Data And Persistence
 - Database: SQLite
 - Access layer: `sqlx` (SQLite driver)
-- Migration system: SQLx migrations under `rust/migrations/`
+- Migration system: SQLx migrations under `migrations/`
 
 ## Feed Ingestion
 - HTTP client: `reqwest`
@@ -55,7 +55,7 @@ This document lists the technology and tooling choices for the Rust implementati
 ## Testing
 - Rust test framework: `cargo test`
 - API and integration tests: `axum` test utilities + `reqwest`
-- End-to-end journey tests: `rust/tests/journey_tests.rs`
+- End-to-end journey tests: `tests/journey_tests.rs`
 
 ## Build And Packaging
 - Build tooling: `cargo`

@@ -104,7 +104,7 @@ Source: `tests/test_email.py`
 - API-specific test-case details in the API test-case documents listed above.
 
 ## Rust Bootstrap Test Cases
-Source: `rust/src/api.rs`
+Source: `src/api.rs`
 
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
@@ -162,7 +162,7 @@ Source: `rust/src/api.rs`
 | TC-RUST-052 | Rust updater skips mailing-list feeds | Seed a due feed row with `is_mailing_list=1` and run Rust updater cycle. | Row is excluded from web-feed updates, and update error fields remain unchanged. |
 
 ### Rust Single-Item Write Parity Test Cases
-Source: `rust/src/api.rs`
+Source: `src/api.rs`
 
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
@@ -175,7 +175,7 @@ Source: `rust/src/api.rs`
 | TC-RUST-059 | Rust v1-3 single unstar state update | Call `POST /index.php/apps/news/api/v1-3/items/{item_id}/unstar` for a starred item. | Returns `200`; item is marked `starred=false` and `lastModified` increases. |
 
 ### Rust Item Query Contract Test Cases
-Source: `rust/src/api.rs`
+Source: `src/api.rs`
 
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
@@ -184,10 +184,10 @@ Source: `rust/src/api.rs`
 | TC-RUST-062 | Rust items unread filtering | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&getRead=false` with mixed read/unread items. | Returns only unread items. |
 | TC-RUST-063 | Rust items oldest-first ordering | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&oldestFirst=true` with multiple item IDs. | Returns items ordered by ascending item ID. |
 | TC-RUST-064 | Rust items batch-size limit | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&batchSize=1` with multiple items. | Returns exactly one item, respecting descending default order. |
-| TC-RUST-065 | Rust items offset/newest-id semantics | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&offset={id}` with newer and older items. | Returns only items with `id <= offset`, matching Python newest-item-id semantics. |
+| TC-RUST-065 | Rust items offset/newest-id semantics | Call `GET /index.php/apps/news/api/v1-3/items?type=3&id=0&offset={id}` with newer and older items. | Returns only items with `id <= offset`, matching the established newest-item-id semantics. |
 
 ### Rust Updated-Items Query Contract Test Cases
-Source: `rust/src/api.rs`
+Source: `src/api.rs`
 
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
@@ -219,7 +219,7 @@ Source: `rust/src/api.rs`
 | TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
 
 ### Rust Newsletter Processing Test Cases
-Source: `rust/src/email.rs`
+Source: `src/email.rs`
 
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
@@ -233,7 +233,7 @@ Source: `rust/src/email.rs`
 | TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
 
 ### Rust Migration Bootstrap Test Cases
-Source: `rust/src/db.rs`
+Source: `src/db.rs`
 
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
