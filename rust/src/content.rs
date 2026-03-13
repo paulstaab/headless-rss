@@ -177,36 +177,39 @@ pub async fn enrich_article_content(
     let mut final_media_thumbnail = media_thumbnail
         .or_else(|| extract_first_image_url(final_content.as_deref().or(final_summary.as_deref())));
 
-    if use_extracted_fulltext
-        && let Some(article_url) = url
-        && let Some(extracted_content) =
-            extract_article(article_http_client, config, article_url).await
-    {
-        final_content = Some(extracted_content);
-        if final_media_thumbnail.is_none() {
-            final_media_thumbnail =
-                extract_first_image_url(final_content.as_deref().or(final_summary.as_deref()));
+    if use_extracted_fulltext {
+        if let Some(article_url) = url {
+            if let Some(extracted_content) =
+                extract_article(article_http_client, config, article_url).await
+            {
+                final_content = Some(extracted_content);
+                if final_media_thumbnail.is_none() {
+                    final_media_thumbnail = extract_first_image_url(
+                        final_content.as_deref().or(final_summary.as_deref()),
+                    );
+                }
+            }
         }
     }
 
-    if final_summary.is_none()
-        && let Some(content_text) = final_content.as_deref()
-    {
-        let llm_summary = if use_llm_summary
-            && config.llm_enabled()
-            && content_text.chars().count() >= LLM_SUMMARY_MIN_CHARS
-        {
-            summarize_article_with_llm(config, content_text).await
-        } else {
-            None
-        };
+    if final_summary.is_none() {
+        if let Some(content_text) = final_content.as_deref() {
+            let llm_summary = if use_llm_summary
+                && config.llm_enabled()
+                && content_text.chars().count() >= LLM_SUMMARY_MIN_CHARS
+            {
+                summarize_article_with_llm(config, content_text).await
+            } else {
+                None
+            };
 
-        final_summary = build_missing_summary(
-            content_text,
-            use_llm_summary,
-            config.llm_enabled(),
-            llm_summary,
-        );
+            final_summary = build_missing_summary(
+                content_text,
+                use_llm_summary,
+                config.llm_enabled(),
+                llm_summary,
+            );
+        }
     }
 
     let content_hash = final_content

@@ -503,10 +503,10 @@ fn extract_subject(parsed: &ParsedMail<'_>) -> String {
 
 /// Extracts the sender email address from a `From` header.
 fn extract_sender_address(from_header: &str) -> String {
-    if let Some(start) = from_header.find('<')
-        && let Some(end) = from_header[start + 1..].find('>')
-    {
-        return from_header[start + 1..start + 1 + end].trim().to_string();
+    if let Some(start) = from_header.find('<') {
+        if let Some(end) = from_header[start + 1..].find('>') {
+            return from_header[start + 1..start + 1 + end].trim().to_string();
+        }
     }
 
     from_header.trim().to_string()
