@@ -77,5 +77,5 @@ Each scenario includes:
 
 | ID | Journey | Preconditions | Actions | Expected Result |
 |---|---|---|---|---|
-| TS-E2E-017 | Store email credentials and ingest newsletters | Database is empty; valid IMAP mailbox credentials are available. | Add the shared feed set, run update cycle, execute add-email-credentials command, run another update cycle, query feeds/items. | Feed items exist from RSS/Atom sources and newsletter feed/items are created from unread emails. |
+| TS-E2E-017 | Store email credentials and ingest newsletters | Database is empty; mock IMAP mailbox messages are available to the Rust test harness. | Add the shared feed set, run update cycle, execute add-email-credentials command with test-mode mailbox validation, run another update cycle with mocked unread emails, query feeds/items. | Feed items exist from RSS/Atom sources and newsletter feed/items are created from mocked unread mailing-list emails. |
 | TS-E2E-018 | Background updater handles source failures gracefully | Database is empty and service is running. | Add the shared feed set and one intentionally invalid URL, run update cycle, inspect feed metadata. | Valid feeds update normally; invalid feed records error metadata (`updateErrorCount`, `lastUpdateError`) without affecting service health. |

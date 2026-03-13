@@ -8,6 +8,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+use std::{fs, io};
 
 use axum::Router;
 use axum::http::header;
@@ -529,36 +530,78 @@ async fn ts_e2e_016_auth_enforces_credentials_and_allows_update() {
 }
 
 #[tokio::test]
-#[ignore = "Requires reachable IMAP mailbox credentials for end-to-end newsletter ingestion"]
+/// Verifies the full subprocess flow for mocked mailbox credential storage and newsletter ingestion.
 async fn ts_e2e_017_store_email_credentials_and_ingest_newsletters() {
     let context = setup_context(None).await;
     add_shared_feeds(&context).await;
     run_update_cycle(&context).await;
 
-    let imap_server = std::env::var("E2E_IMAP_SERVER").expect("E2E_IMAP_SERVER not set");
-    let imap_port = std::env::var("E2E_IMAP_PORT").expect("E2E_IMAP_PORT not set");
-    let imap_username = std::env::var("E2E_IMAP_USERNAME").expect("E2E_IMAP_USERNAME not set");
-    let imap_password = std::env::var("E2E_IMAP_PASSWORD").expect("E2E_IMAP_PASSWORD not set");
+    let mock_messages_path = write_mock_imap_messages(context._temp_dir.path())
+        .expect("failed to write mock IMAP messages");
 
     let status = Command::new(binary_path())
         .arg("add-email-credentials")
         .arg("--server")
-        .arg(imap_server)
+        .arg("mock-imap.local")
         .arg("--port")
-        .arg(imap_port)
+        .arg("993")
         .arg("--username")
-        .arg(imap_username)
+        .arg("journey@example.com")
         .arg("--password")
-        .arg(imap_password)
+        .arg("journey-secret")
         .env("DATABASE_PATH", &context.db_path)
         .env("TESTING_MODE", "true")
+        .env("HEADLESS_RSS_TEST_IMAP_ALLOW", "true")
+        .env("HEADLESS_RSS_TEST_IMAP_MESSAGES_FILE", &mock_messages_path)
         .status()
         .expect("failed to run add-email-credentials command");
     assert!(status.success());
 
-    run_update_cycle(&context).await;
+    mark_all_feeds_due(&context.db_path).await;
+    run_update_command_with_env(
+        &context.db_path,
+        auth_for(&context).map(|(u, _)| u),
+        auth_for(&context).map(|(_, p)| p),
+        &[
+            ("HEADLESS_RSS_TEST_IMAP_ALLOW", "true"),
+            (
+                "HEADLESS_RSS_TEST_IMAP_MESSAGES_FILE",
+                mock_messages_path.to_string_lossy().as_ref(),
+            ),
+        ],
+    )
+    .await;
+
     let feeds = get_json(&context, &format!("{API_V13}/feeds"), None).await;
-    assert!(feeds["feeds"].as_array().map_or(0, Vec::len) >= 4);
+    let newsletter_feed = feeds["feeds"]
+        .as_array()
+        .and_then(|items| {
+            items.iter().find(|feed| {
+                feed["title"].as_str() == Some("Example List")
+                    && feed["url"].as_str() == Some("list@example.com")
+            })
+        })
+        .expect("missing newsletter feed");
+    let newsletter_feed_id = newsletter_feed["id"]
+        .as_i64()
+        .expect("missing newsletter feed id");
+
+    let newsletter_items = get_json(
+        &context,
+        &format!("{API_V13}/items?type=0&id={newsletter_feed_id}"),
+        None,
+    )
+    .await;
+    let items = newsletter_items["items"]
+        .as_array()
+        .expect("missing newsletter items array");
+    assert_eq!(items.len(), 2);
+    let titles: Vec<&str> = items
+        .iter()
+        .filter_map(|item| item["title"].as_str())
+        .collect();
+    assert!(titles.contains(&"Newsletter Digest"));
+    assert!(titles.contains(&"Second Newsletter"));
 }
 
 #[tokio::test]
@@ -947,9 +990,23 @@ fn spawn_server(
 
 /// Runs the CLI update command against the same isolated database.
 async fn run_update_command(db_path: &Path, username: Option<&str>, password: Option<&str>) {
+    run_update_command_with_env(db_path, username, password, &[]).await;
+}
+
+/// Runs the CLI update command with extra environment variables for test-only integration hooks.
+async fn run_update_command_with_env(
+    db_path: &Path,
+    username: Option<&str>,
+    password: Option<&str>,
+    extra_envs: &[(&str, &str)],
+) {
     let db_path = db_path.to_path_buf();
     let username = username.map(ToOwned::to_owned);
     let password = password.map(ToOwned::to_owned);
+    let extra_envs: Vec<(String, String)> = extra_envs
+        .iter()
+        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+        .collect();
 
     let status = tokio::task::spawn_blocking(move || {
         let mut command = Command::new(binary_path());
@@ -966,6 +1023,9 @@ async fn run_update_command(db_path: &Path, username: Option<&str>, password: Op
         if let Some(pass) = password.as_deref() {
             command.env("PASSWORD", pass);
         }
+        for (key, value) in &extra_envs {
+            command.env(key, value);
+        }
 
         command.status()
     })
@@ -977,6 +1037,39 @@ async fn run_update_command(db_path: &Path, username: Option<&str>, password: Op
         status.success(),
         "update command failed with status {status}"
     );
+}
+
+/// Writes serialized mock IMAP messages for subprocess-based journey tests.
+fn write_mock_imap_messages(base_dir: &Path) -> io::Result<PathBuf> {
+    let file_path = base_dir.join("mock-imap-messages.json");
+    let messages = vec![
+        concat!(
+            "Subject: Newsletter Digest\r\n",
+            "From: Example List <list@example.com>\r\n",
+            "List-Unsubscribe: <mailto:unsubscribe@example.com>\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Body 1"
+        ),
+        concat!(
+            "Subject: Not A Newsletter\r\n",
+            "From: Person <person@example.com>\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Ignore me"
+        ),
+        concat!(
+            "Subject: Second Newsletter\r\n",
+            "From: Example List <list@example.com>\r\n",
+            "List-Unsubscribe: <mailto:unsubscribe@example.com>\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Body 2"
+        ),
+    ];
+    let encoded = serde_json::to_string(&messages).expect("failed to encode mock messages");
+    fs::write(&file_path, encoded)?;
+    Ok(file_path)
 }
 
 /// Marks feeds as due so the update command processes them in the test run.

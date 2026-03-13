@@ -2,6 +2,7 @@ mod api;
 mod config;
 mod content;
 mod db;
+mod email;
 mod email_credentials;
 mod http_client;
 mod ssrf;

@@ -8,6 +8,7 @@ use sqlx::{FromRow, SqlitePool};
 use crate::config::Config;
 use crate::content::{self, FeedContentState};
 use crate::db;
+use crate::email;
 use crate::http_client;
 use crate::ssrf;
 
@@ -131,6 +132,8 @@ async fn update_feed_batch(
         batch_kind,
         "feed update batch summary"
     );
+
+    email::fetch_emails_from_all_mailboxes(pool, config).await?;
 
     Ok(feeds.len())
 }
@@ -420,6 +423,12 @@ mod tests {
         .unwrap();
         sqlx::query(
             "CREATE TABLE article (id INTEGER PRIMARY KEY NOT NULL, title VARCHAR, content VARCHAR, author VARCHAR, content_hash VARCHAR, enclosure_link VARCHAR, enclosure_mime VARCHAR, feed_id INTEGER NOT NULL, fingerprint VARCHAR, guid VARCHAR NOT NULL, guid_hash VARCHAR NOT NULL, last_modified INTEGER NOT NULL, media_description VARCHAR, media_thumbnail VARCHAR, pub_date INTEGER, rtl BOOLEAN NOT NULL, starred BOOLEAN NOT NULL, unread BOOLEAN NOT NULL, updated_date INTEGER, url VARCHAR, summary VARCHAR)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE email_credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, protocol VARCHAR NOT NULL, server VARCHAR NOT NULL, port INTEGER NOT NULL, username VARCHAR NOT NULL, password VARCHAR NOT NULL)",
         )
         .execute(&pool)
         .await

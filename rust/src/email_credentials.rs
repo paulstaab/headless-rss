@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use native_tls::TlsConnector;
 use sqlx::SqlitePool;
+use std::env;
 
 use crate::config::Config;
 use crate::db;
 
+/// Validates and persists IMAP credentials for later newsletter polling.
 pub async fn add_email_credentials(
     config: &Config,
     server: String,
@@ -31,6 +33,7 @@ pub async fn add_email_credentials(
     Ok(())
 }
 
+/// Runs a credential validator and persists the mailbox configuration only on success.
 async fn add_email_credentials_with_validator<F>(
     pool: &SqlitePool,
     protocol: &str,
@@ -62,12 +65,17 @@ where
     Ok(())
 }
 
+/// Verifies that the supplied IMAP settings can connect, authenticate, and open the inbox.
 fn validate_imap_credentials(
     server: &str,
     port: u16,
     username: &str,
     password: &str,
 ) -> Result<()> {
+    if mock_imap_enabled() {
+        return Ok(());
+    }
+
     let tls = TlsConnector::builder()
         .build()
         .context("failed to initialize tls connector")?;
@@ -83,6 +91,18 @@ fn validate_imap_credentials(
     session.select("inbox").context("failed to select inbox")?;
     session.logout().context("failed to logout from mailbox")?;
     Ok(())
+}
+
+/// Returns true when test-mode mailbox validation should bypass the real IMAP round trip.
+fn mock_imap_enabled() -> bool {
+    env::var("TESTING_MODE")
+        .ok()
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+        && env::var("HEADLESS_RSS_TEST_IMAP_ALLOW")
+            .ok()
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false)
 }
 
 #[cfg(test)]

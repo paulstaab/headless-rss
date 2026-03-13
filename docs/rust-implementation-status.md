@@ -60,12 +60,12 @@ This document tracks Rust implementation progress against the technology-indepen
 | CNT-007 | Implemented | Rust falls back to truncation when LLM summarization is disabled and content is long. |
 | EML-001 | Implemented | Email credentials storage path exists. |
 | EML-002 | Implemented | IMAP connectivity/login validation before persistence exists. |
-| EML-003 | Partial | End-to-end newsletter ingestion is not fully verified in journey tests. |
-| EML-004 | Partial | Mailing-list message filtering exists but needs broader parity verification. |
-| EML-005 | Partial | Auto-creation behavior requires additional parity verification. |
-| EML-006 | Partial | Newsletter cleanup/transformation path needs broader parity verification. |
-| EML-007 | Not Started | LLM newsletter parsing modes not fully ported. |
-| EML-008 | Not Started | Newsletter stale-entry cleanup parity not fully ported. |
+| EML-003 | Implemented | Update cycles now fetch unread IMAP messages from configured mailboxes and persist newsletter articles; journey coverage includes a mocked IMAP subprocess flow. |
+| EML-004 | Implemented | Rust only processes messages identified as mailing-list emails via `List-Unsubscribe`. |
+| EML-005 | Implemented | Mailing-list feeds are auto-created on first sender encounter under the root folder. |
+| EML-006 | Implemented | Newsletter HTML is cleaned before persistence and stored in reader-friendly form. |
+| EML-007 | Implemented | Rust supports LLM-driven newsletter parsing for `single` and `multi` modes, capped to 25 items. |
+| EML-008 | Implemented | Rust cleans up stale newsletter entries only when older than 90 days, read, and unstarred. |
 | SEC-001 | Implemented | Scheme allowlist validation implemented. |
 | SEC-002 | Implemented | IP/DNS SSRF protections implemented. |
 | SEC-003 | Implemented | Localhost allowance is limited to testing mode. |

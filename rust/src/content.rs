@@ -178,6 +178,7 @@ pub async fn maybe_refresh_feed_content_state(
 }
 
 /// Applies thumbnail fallback, optional full-text extraction, and optional summary generation.
+#[allow(clippy::too_many_arguments)]
 pub async fn enrich_article_content(
     article_http_client: &Client,
     config: &Config,
@@ -193,39 +194,36 @@ pub async fn enrich_article_content(
     let mut final_media_thumbnail = media_thumbnail
         .or_else(|| extract_first_image_url(final_content.as_deref().or(final_summary.as_deref())));
 
-    if use_extracted_fulltext {
-        if let Some(article_url) = url {
-            if let Some(extracted_content) =
-                extract_article(article_http_client, config, article_url).await
-            {
-                final_content = Some(extracted_content);
-                if final_media_thumbnail.is_none() {
-                    final_media_thumbnail = extract_first_image_url(
-                        final_content.as_deref().or(final_summary.as_deref()),
-                    );
-                }
-            }
+    if use_extracted_fulltext
+        && let Some(article_url) = url
+        && let Some(extracted_content) =
+            extract_article(article_http_client, config, article_url).await
+    {
+        final_content = Some(extracted_content);
+        if final_media_thumbnail.is_none() {
+            final_media_thumbnail =
+                extract_first_image_url(final_content.as_deref().or(final_summary.as_deref()));
         }
     }
 
-    if final_summary.is_none() {
-        if let Some(content_text) = final_content.as_deref() {
-            let llm_summary = if use_llm_summary
-                && config.llm_enabled()
-                && content_text.chars().count() >= LLM_SUMMARY_MIN_CHARS
-            {
-                summarize_article_with_llm(config, content_text).await
-            } else {
-                None
-            };
+    if final_summary.is_none()
+        && let Some(content_text) = final_content.as_deref()
+    {
+        let llm_summary = if use_llm_summary
+            && config.llm_enabled()
+            && content_text.chars().count() >= LLM_SUMMARY_MIN_CHARS
+        {
+            summarize_article_with_llm(config, content_text).await
+        } else {
+            None
+        };
 
-            final_summary = build_missing_summary(
-                content_text,
-                use_llm_summary,
-                config.llm_enabled(),
-                llm_summary,
-            );
-        }
+        final_summary = build_missing_summary(
+            content_text,
+            use_llm_summary,
+            config.llm_enabled(),
+            llm_summary,
+        );
     }
 
     let content_hash = final_content
@@ -249,7 +247,7 @@ fn needs_quality_check(last_quality_check: Option<i64>) -> bool {
 
 fn select_quality_sample(entries: &[Entry]) -> Option<&Entry> {
     entries.iter().find(|entry| {
-        let has_link = entry.links.first().is_some();
+        let has_link = !entry.links.is_empty();
         let has_content = entry
             .content
             .as_ref()
@@ -333,9 +331,7 @@ async fn extract_article(
 }
 
 async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Option<String> {
-    let Some(api_key) = config.openai_api_key.as_deref() else {
-        return None;
-    };
+    let api_key = config.openai_api_key.as_deref()?;
 
     let normalized_text = strip_html(article_text);
     let trimmed_text = truncate_chars(&normalized_text, ARTICLE_MAX_CHARS);

@@ -204,6 +204,25 @@ Source: `rust/src/api.rs`
 | TC-RUST-076 | Rust non-LLM summary fallback | Generate a Rust article summary for long content while LLM summarization is disabled. | Summary falls back to the first 160 characters plus `...`. |
 | TC-RUST-077 | Rust LLM summary suffix | Generate a Rust article summary from an LLM result. | Persisted/generated summary ends with ` (AI generated)`. |
 | TC-RUST-078 | Rust mock OpenAI journey summary | Add a feed whose article is fetched from a local fixture and whose summary is generated from a mock OpenAI-compatible endpoint. | The running Rust service stores extracted article content and returns the mocked summary with the ` (AI generated)` suffix through the item APIs. |
+| TC-RUST-079 | Rust newsletter mailbox ingestion | Seed IMAP credentials and feed mock unread mailing-list messages through the Rust newsletter updater path. | Mailing-list feeds are created, non-list mail is ignored, and newsletter articles are persisted without duplicates. |
+| TC-RUST-080 | Rust newsletter HTML cleanup | Process an HTML newsletter containing hidden blocks, meta tags, layout tables, and tracking pixels. | Persisted newsletter content removes hidden/tracking markup while preserving readable content. |
+| TC-RUST-081 | Rust newsletter LLM multi-item split | Build newsletter articles from a mocked Rust LLM parse result with `mode=multi`. | Up to 25 URL-backed items are converted into separate persisted articles with expected URLs and summaries. |
+| TC-RUST-082 | Rust newsletter LLM single-item mode | Build newsletter articles from a mocked Rust LLM parse result with `mode=single`. | A single persisted article uses the cleaned LLM content and summary. |
+| TC-RUST-083 | Rust newsletter stale cleanup gate | Seed newsletter and non-newsletter articles across old/new, read/unread, and starred/unstarred states. | Only stale read unstarred newsletter articles are deleted. |
+| TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
+| TC-RUST-085 | Rust mocked newsletter journey | Run the Rust CLI credential command and update command with a test-only mocked IMAP mailbox file. | Newsletter feed/items are created through the full subprocess path without requiring a real mailbox. |
+
+### Rust Newsletter Processing Test Cases
+Source: `rust/src/email.rs`
+
+| ID | Case | Description | Expected Result |
+|---|---|---|---|
+| TC-RUST-079 | Rust newsletter mailbox ingestion | Seed IMAP credentials and feed mock unread mailing-list messages through the Rust newsletter updater path. | Mailing-list feeds are created, non-list mail is ignored, and newsletter articles are persisted without duplicates. |
+| TC-RUST-080 | Rust newsletter HTML cleanup | Process an HTML newsletter containing hidden blocks, meta tags, layout tables, and tracking pixels. | Persisted newsletter content removes hidden/tracking markup while preserving readable content. |
+| TC-RUST-081 | Rust newsletter LLM multi-item split | Build newsletter articles from a mocked Rust LLM parse result with `mode=multi`. | Up to 25 URL-backed items are converted into separate persisted articles with expected URLs and summaries. |
+| TC-RUST-082 | Rust newsletter LLM single-item mode | Build newsletter articles from a mocked Rust LLM parse result with `mode=single`. | A single persisted article uses the cleaned LLM content and summary. |
+| TC-RUST-083 | Rust newsletter stale cleanup gate | Seed newsletter and non-newsletter articles across old/new, read/unread, and starred/unstarred states. | Only stale read unstarred newsletter articles are deleted. |
+| TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
 
 ### Rust Migration Bootstrap Test Cases
 Source: `rust/src/db.rs`
