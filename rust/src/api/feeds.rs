@@ -210,6 +210,7 @@ pub(super) async fn v1_3_mark_feed_items_read(
     mark_feed_items_read(&state.pool, feed_id, input.newest_item_id).await
 }
 
+/// Validates feed input, persists the feed row, and ingests the initial article set.
 async fn add_feed(
     pool: &SqlitePool,
     feed_http_client: &reqwest::Client,
@@ -331,6 +332,7 @@ async fn insert_article_from_entry(
     Ok(())
 }
 
+/// Moves a feed to the requested folder after validating both identifiers.
 async fn move_feed(
     pool: &SqlitePool,
     feed_id: i64,
@@ -356,6 +358,7 @@ async fn move_feed(
     Ok(StatusCode::OK)
 }
 
+/// Updates the stored display title for a single feed.
 async fn rename_feed(pool: &SqlitePool, feed_id: i64, feed_title: &str) -> ApiResult<StatusCode> {
     let result = sqlx::query("UPDATE feed SET title = ? WHERE id = ?")
         .bind(feed_title)
@@ -370,6 +373,7 @@ async fn rename_feed(pool: &SqlitePool, feed_id: i64, feed_title: &str) -> ApiRe
     Ok(StatusCode::OK)
 }
 
+/// Marks items in a single feed as read up to the provided newest item boundary.
 async fn mark_feed_items_read(
     pool: &SqlitePool,
     feed_id: i64,
@@ -397,6 +401,7 @@ async fn mark_feed_items_read(
 }
 
 /// Loads feeds in API response format.
+/// Loads all feeds and normalizes the internal root folder to `null` in responses.
 pub(super) async fn load_feeds(pool: &SqlitePool) -> ApiResult<Vec<FeedOut>> {
     let root_folder_id: Option<i64> =
         sqlx::query_scalar("SELECT id FROM folder WHERE is_root = 1 LIMIT 1")

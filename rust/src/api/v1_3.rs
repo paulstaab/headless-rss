@@ -1,3 +1,5 @@
+//! Route map for the Nextcloud News v1-3 compatibility surface.
+
 use std::sync::Arc;
 
 use axum::Router;
@@ -8,6 +10,7 @@ use crate::config::Config;
 
 use super::AppState;
 
+/// Builds the protected v1-3 router with the correct method and path mappings.
 pub(super) fn router(config_for_middleware: Arc<Config>) -> Router<AppState> {
     Router::new()
         .route("/feeds", get(super::feeds::get_feeds))

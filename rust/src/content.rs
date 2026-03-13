@@ -221,6 +221,7 @@ pub async fn enrich_article_content(
     }
 }
 
+/// Returns whether the monthly feed-quality evaluation window has elapsed.
 fn needs_quality_check(last_quality_check: Option<i64>) -> bool {
     match last_quality_check {
         None => true,
@@ -228,6 +229,7 @@ fn needs_quality_check(last_quality_check: Option<i64>) -> bool {
     }
 }
 
+/// Picks the first feed entry that includes both content metadata and a canonical link.
 fn select_quality_sample(entries: &[Entry]) -> Option<&Entry> {
     entries.iter().find(|entry| {
         let has_link = !entry.links.is_empty();
@@ -242,6 +244,7 @@ fn select_quality_sample(entries: &[Entry]) -> Option<&Entry> {
     })
 }
 
+/// Compares extracted article text against feed-provided text to decide which is richer.
 fn is_extracted_content_preferred(
     extracted_text: Option<&str>,
     feed_content: Option<&str>,
@@ -255,6 +258,7 @@ fn is_extracted_content_preferred(
     extracted_length >= 2 * feed_length
 }
 
+/// Builds a fallback summary when feed content lacks a dedicated summary field.
 fn build_missing_summary(
     content: &str,
     use_llm_summary: bool,
@@ -275,6 +279,7 @@ fn build_missing_summary(
     ))
 }
 
+/// Fetches a remote article document and extracts cleaned main-content HTML.
 async fn extract_article(
     article_http_client: &Client,
     config: &Config,
@@ -378,6 +383,7 @@ fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::
     })
 }
 
+/// Removes HTML tags so LLM prompts operate on readable text instead of markup.
 fn strip_html(text: &str) -> String {
     static HTML_REGEX: OnceLock<Regex> = OnceLock::new();
     HTML_REGEX
@@ -386,10 +392,12 @@ fn strip_html(text: &str) -> String {
         .to_string()
 }
 
+/// Truncates a string by Unicode scalar count without breaking UTF-8 boundaries.
 fn truncate_chars(text: &str, limit: usize) -> String {
     text.chars().take(limit).collect()
 }
 
+/// Returns the current Unix timestamp in seconds for feed quality bookkeeping.
 fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
