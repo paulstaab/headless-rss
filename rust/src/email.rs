@@ -5,7 +5,6 @@
 //! applying newsletter-specific cleanup behavior.
 
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 use mailparse::{MailHeaderMap, ParsedMail};
@@ -21,11 +20,11 @@ use crate::article_store::{self, ArticleRecord, InsertArticleOutcome};
 use crate::config::Config;
 use crate::content;
 use crate::http_client;
+use crate::llm;
 
 const NINETY_DAYS: i64 = 90 * 24 * 60 * 60;
 const NEWSLETTER_MAX_CHARS: usize = 5_000;
 const NEWSLETTER_MAX_ITEMS: usize = 25;
-const OPENAI_TIMEOUT_SECONDS: u64 = 10;
 
 #[derive(Clone, Debug, FromRow)]
 struct EmailCredentialRow {
@@ -34,21 +33,6 @@ struct EmailCredentialRow {
     port: i64,
     username: String,
     password: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatCompletionResponse {
-    choices: Vec<OpenAiChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChoice {
-    message: OpenAiMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiMessage {
-    content: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -615,64 +599,26 @@ async fn parse_newsletter_with_llm(
     from_address: &str,
     content: &str,
 ) -> Option<NewsletterLlmResult> {
-    let api_key = config.openai_api_key.as_deref()?;
+    config.openai_api_key.as_deref()?;
 
     let trimmed_content = truncate_chars(content, NEWSLETTER_MAX_CHARS);
     if trimmed_content.trim().is_empty() {
         return None;
     }
 
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(OPENAI_TIMEOUT_SECONDS))
-        .build()
-    {
-        Ok(client) => client,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to build OpenAI client for newsletter parsing");
-            return None;
-        }
-    };
-
-    let response = match client
-        .post(openai_chat_completions_url(&config.openai_base_url))
-        .bearer_auth(api_key)
-        .json(&build_openai_newsletter_payload(
+    let content = llm::request_chat_completion_content(
+        config,
+        build_openai_newsletter_payload(
             &config.openai_model,
             subject,
             from_address,
             &trimmed_content,
-        ))
-        .send()
-        .await
-    {
-        Ok(response) => response,
-        Err(err) => {
-            tracing::warn!(error = %err, "newsletter llm request failed");
-            return None;
-        }
-    };
+        ),
+        "newsletter parsing",
+    )
+    .await?;
 
-    if !response.status().is_success() {
-        tracing::warn!(status = %response.status(), "newsletter llm request returned non-success status");
-        return None;
-    }
-
-    let body: OpenAiChatCompletionResponse = match response.json().await {
-        Ok(body) => body,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to decode newsletter llm response");
-            return None;
-        }
-    };
-
-    let content = body
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.as_deref())
-        .map(str::trim)
-        .filter(|content| !content.is_empty())?;
-
-    let parsed: RawNewsletterLlmResult = match serde_json::from_str(content) {
+    let parsed: RawNewsletterLlmResult = match serde_json::from_str(&content) {
         Ok(parsed) => parsed,
         Err(err) => {
             tracing::warn!(error = %err, "newsletter llm response was not valid JSON");
@@ -705,11 +651,6 @@ fn normalize_llm_result(result: RawNewsletterLlmResult) -> NewsletterLlmResult {
         content: result.content,
         items,
     }
-}
-
-/// Builds the chat completions URL from the configured OpenAI-compatible base URL.
-fn openai_chat_completions_url(base_url: &str) -> String {
-    format!("{}/chat/completions", base_url.trim_end_matches('/'))
 }
 
 /// Builds the structured-output payload used for newsletter parsing requests.

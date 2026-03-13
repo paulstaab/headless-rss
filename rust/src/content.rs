@@ -1,25 +1,23 @@
 //! Shared content extraction and summarization helpers for Rust article ingestion.
 
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 use feed_rs::model::Entry;
 use readability_js::Readability;
 use regex::Regex;
 use reqwest::Client;
-use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::config::Config;
+use crate::llm;
 use crate::ssrf;
 
 const ONE_DAY: i64 = 86_400;
 const ONE_MONTH: i64 = 30 * ONE_DAY;
 const ARTICLE_MAX_CHARS: usize = 8_000;
 const LLM_SUMMARY_MIN_CHARS: usize = 160;
-const OPENAI_TIMEOUT_SECONDS: u64 = 10;
 
 #[derive(Clone, Copy, Debug)]
 pub struct FeedContentState {
@@ -34,21 +32,6 @@ pub struct EnrichedArticleContent {
     pub summary: Option<String>,
     pub media_thumbnail: Option<String>,
     pub content_hash: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatCompletionResponse {
-    choices: Vec<OpenAiChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChoice {
-    message: OpenAiMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiMessage {
-    content: Option<String>,
 }
 
 /// Extracts the first image source URL from HTML body content.
@@ -331,7 +314,7 @@ async fn extract_article(
 }
 
 async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Option<String> {
-    let api_key = config.openai_api_key.as_deref()?;
+    config.openai_api_key.as_deref()?;
 
     let normalized_text = strip_html(article_text);
     let trimmed_text = truncate_chars(&normalized_text, ARTICLE_MAX_CHARS);
@@ -339,55 +322,17 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
         return None;
     }
 
-    let client = match Client::builder()
-        .timeout(Duration::from_secs(OPENAI_TIMEOUT_SECONDS))
-        .build()
-    {
-        Ok(client) => client,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to build OpenAI client");
-            return None;
-        }
-    };
-
-    let response = match client
-        .post(openai_chat_completions_url(&config.openai_base_url))
-        .bearer_auth(api_key)
-        .json(&build_openai_summary_payload(
+    let response_text = llm::request_chat_completion_content(
+        config,
+        build_openai_summary_payload(
             &config.openai_model,
             &trimmed_text,
-        ))
-        .send()
-        .await
-    {
-        Ok(response) => response,
-        Err(err) => {
-            tracing::warn!(error = %err, "llm article summarization failed");
-            return None;
-        }
-    };
+        ),
+        "article summarization",
+    )
+    .await?;
 
-    if !response.status().is_success() {
-        tracing::warn!(status = %response.status(), "llm article summarization returned non-success status");
-        return None;
-    }
-
-    let body: OpenAiChatCompletionResponse = match response.json().await {
-        Ok(body) => body,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to decode OpenAI summary response");
-            return None;
-        }
-    };
-
-    let response_text = body
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.as_deref())
-        .map(str::trim)
-        .filter(|content| !content.is_empty())?;
-
-    let parsed: serde_json::Value = match serde_json::from_str(response_text) {
+    let parsed: serde_json::Value = match serde_json::from_str(&response_text) {
         Ok(parsed) => parsed,
         Err(err) => {
             tracing::warn!(error = %err, "llm summary response was not valid JSON");
@@ -402,10 +347,6 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
         .filter(|summary| !summary.is_empty())?;
 
     Some(format!("{summary} (AI generated)"))
-}
-
-fn openai_chat_completions_url(base_url: &str) -> String {
-    format!("{}/chat/completions", base_url.trim_end_matches('/'))
 }
 
 fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::Value {
@@ -461,8 +402,9 @@ fn unix_now() -> i64 {
 mod tests {
     use super::{
         build_missing_summary, extract_article_from_html, extract_first_image_url,
-        is_extracted_content_preferred, normalize_text, openai_chat_completions_url,
+        is_extracted_content_preferred, normalize_text,
     };
+    use crate::llm::openai_chat_completions_url;
 
     #[test]
     fn extract_article_from_html_returns_main_article_body() {
