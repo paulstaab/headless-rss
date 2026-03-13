@@ -198,6 +198,12 @@ Source: `rust/src/api.rs`
 | TC-RUST-070 | Rust updated-items all selection ordering | Call `GET /index.php/apps/news/api/v1-3/items/updated?lastModified={ts}&type=3&id=0` with multiple matching IDs. | Returns matching items in descending item-ID order (`oldestFirst=false`). |
 | TC-RUST-071 | Rust feed ingest thumbnail fallback | Add a feed whose entry body HTML contains an `<img>` and no explicit feed thumbnail. | Inserted article stores `media_thumbnail` from the first body image URL. |
 | TC-RUST-072 | Rust updater stale-article cleanup gate | Seed feed articles spanning stale/fresh, read/unread, starred/unstarred, and in-payload/not-in-payload states; run due-feed update. | Only articles older than 90 days that are read, unstarred, and absent from the latest payload are deleted. |
+| TC-RUST-073 | Rust readability article extraction | Run Rust article extraction on fixture HTML containing article body and footer. | Extracted HTML contains the main article body and excludes footer boilerplate. |
+| TC-RUST-074 | Rust feed quality enables extraction | Run Rust updater against a feed whose sampled article extracts to content much longer than the feed summary. | Feed flags persist `use_extracted_fulltext=true`, `use_llm_summary=true`, and `last_quality_check` is updated. |
+| TC-RUST-075 | Rust feed quality rejects weak extraction | Run Rust updater against a feed whose sampled article extraction is not substantially better than the feed summary. | Feed flags persist `use_extracted_fulltext=false`, `use_llm_summary=false`, and `last_quality_check` is updated. |
+| TC-RUST-076 | Rust non-LLM summary fallback | Generate a Rust article summary for long content while LLM summarization is disabled. | Summary falls back to the first 160 characters plus `...`. |
+| TC-RUST-077 | Rust LLM summary suffix | Generate a Rust article summary from an LLM result. | Persisted/generated summary ends with ` (AI generated)`. |
+| TC-RUST-078 | Rust mock OpenAI journey summary | Add a feed whose article is fetched from a local fixture and whose summary is generated from a mock OpenAI-compatible endpoint. | The running Rust service stores extracted article content and returns the mocked summary with the ` (AI generated)` suffix through the item APIs. |
 
 ### Rust Migration Bootstrap Test Cases
 Source: `rust/src/db.rs`

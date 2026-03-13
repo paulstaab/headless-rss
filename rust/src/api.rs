@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::OnceLock;
 use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,12 +12,12 @@ use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use feed_rs::model::Entry;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
 use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
+use crate::content::{self, FeedContentState};
 use crate::ssrf;
 
 mod v1_2;
@@ -29,6 +28,7 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub config: Arc<Config>,
     pub feed_http_client: reqwest::Client,
+    pub article_http_client: reqwest::Client,
 }
 
 #[derive(Serialize)]
@@ -472,14 +472,28 @@ async fn v1_2_add_feed(
     State(state): State<AppState>,
     Json(input): Json<FeedCreateIn>,
 ) -> Result<Json<FeedCreateOut>, (StatusCode, Json<serde_json::Value>)> {
-    add_feed(&state.pool, &state.feed_http_client, &state.config, input).await
+    add_feed(
+        &state.pool,
+        &state.feed_http_client,
+        &state.article_http_client,
+        &state.config,
+        input,
+    )
+    .await
 }
 
 async fn v1_3_add_feed(
     State(state): State<AppState>,
     Json(input): Json<FeedCreateIn>,
 ) -> Result<Json<FeedCreateOut>, (StatusCode, Json<serde_json::Value>)> {
-    add_feed(&state.pool, &state.feed_http_client, &state.config, input).await
+    add_feed(
+        &state.pool,
+        &state.feed_http_client,
+        &state.article_http_client,
+        &state.config,
+        input,
+    )
+    .await
 }
 
 async fn delete_feed(
@@ -570,6 +584,7 @@ async fn v1_3_mark_feed_items_read(
 async fn add_feed(
     pool: &SqlitePool,
     feed_http_client: &reqwest::Client,
+    article_http_client: &reqwest::Client,
     config: &Config,
     input: FeedCreateIn,
 ) -> Result<Json<FeedCreateOut>, (StatusCode, Json<serde_json::Value>)> {
@@ -609,6 +624,7 @@ async fn add_feed(
     let now_ts = unix_now();
     let title = parsed.title.map(|t| t.content);
     let link = parsed.links.first().map(|l| l.href.clone());
+    let feed_title = title.clone();
 
     let result = sqlx::query(
         "INSERT INTO feed (url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (?, ?, NULL, ?, ?, ?, 0, ?, 0, 0, NULL)",
@@ -624,8 +640,32 @@ async fn add_feed(
     .map_err(internal_error)?;
     let feed_id = result.last_insert_rowid();
 
+    let content_state = content::maybe_refresh_feed_content_state(
+        pool,
+        article_http_client,
+        config,
+        feed_id,
+        feed_title.as_deref(),
+        FeedContentState {
+            last_quality_check: None,
+            use_extracted_fulltext: false,
+            use_llm_summary: false,
+        },
+        &parsed.entries,
+    )
+    .await
+    .map_err(internal_anyhow_error)?;
+
     for entry in parsed.entries.iter().take(50) {
-        insert_article_from_entry(pool, feed_id, entry).await?;
+        insert_article_from_entry(
+            pool,
+            article_http_client,
+            config,
+            feed_id,
+            entry,
+            content_state,
+        )
+        .await?;
     }
 
     let feeds = load_feeds(pool).await?;
@@ -637,8 +677,11 @@ async fn add_feed(
 
 async fn insert_article_from_entry(
     pool: &SqlitePool,
+    article_http_client: &reqwest::Client,
+    config: &Config,
     feed_id: i64,
     entry: &Entry,
+    content_state: FeedContentState,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
     let guid = if entry.id.is_empty() {
         entry
@@ -670,53 +713,45 @@ async fn insert_article_from_entry(
         .as_ref()
         .and_then(|content| content.body.clone());
     let summary = entry.summary.as_ref().map(|s| s.content.clone());
-    let media_thumbnail = extract_first_image_url(content.as_deref().or(summary.as_deref()));
-    let content_hash = content
-        .as_ref()
-        .map(|value| format!("{:x}", md5::compute(value.as_bytes())));
     let title = entry.title.as_ref().map(|t| t.content.clone());
     let url = entry.links.first().map(|l| l.href.clone());
     let author = entry.authors.first().map(|a| a.name.clone());
     let now_ts = unix_now();
     let updated = entry.updated.map(|dt| dt.timestamp()).unwrap_or(now_ts);
     let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
+    let enriched = content::enrich_article_content(
+        article_http_client,
+        config,
+        url.as_deref(),
+        content,
+        summary,
+        None,
+        content_state.use_extracted_fulltext,
+        content_state.use_llm_summary,
+    )
+    .await;
 
     sqlx::query(
         "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, 0, 1, ?, ?, ?)",
     )
     .bind(title)
-    .bind(content)
+    .bind(enriched.content)
     .bind(author)
-    .bind(content_hash)
+    .bind(enriched.content_hash)
     .bind(feed_id)
     .bind(guid)
     .bind(guid_hash)
     .bind(now_ts)
-    .bind(media_thumbnail)
+    .bind(enriched.media_thumbnail)
     .bind(published)
     .bind(updated)
     .bind(url)
-    .bind(summary)
+    .bind(enriched.summary)
     .execute(pool)
     .await
     .map_err(internal_error)?;
 
     Ok(())
-}
-
-/// Extracts the first image source URL from HTML body content.
-fn extract_first_image_url(html_content: Option<&str>) -> Option<String> {
-    let html = html_content?;
-
-    static IMG_SRC_REGEX: OnceLock<Regex> = OnceLock::new();
-    let regex = IMG_SRC_REGEX.get_or_init(|| {
-        Regex::new(r#"(?is)<img[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"']"#)
-            .expect("valid image src regex")
-    });
-
-    regex
-        .captures(html)
-        .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
 
 async fn move_feed(
@@ -1448,6 +1483,14 @@ fn internal_error(error: sqlx::Error) -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
+fn internal_anyhow_error(error: anyhow::Error) -> (StatusCode, Json<serde_json::Value>) {
+    tracing::error!(?error, "application operation failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({ "detail": "Internal server error" })),
+    )
+}
+
 fn item_not_found() -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::NOT_FOUND,
@@ -1484,7 +1527,7 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR)",
+            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR, is_mailing_list BOOLEAN NOT NULL DEFAULT 0, last_quality_check INTEGER, use_extracted_fulltext BOOLEAN NOT NULL DEFAULT 0, use_llm_summary BOOLEAN NOT NULL DEFAULT 0)",
         )
         .execute(&pool)
         .await
@@ -1500,7 +1543,7 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (10, 'https://example.com/rss', 'Example Feed', NULL, 123, NULL, 1, 0, 'https://example.com', 0, 0, NULL)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (10, 'https://example.com/rss', 'Example Feed', NULL, 123, NULL, 1, 0, 'https://example.com', 0, 0, NULL, 0, NULL, 0, 0)")
             .execute(&pool)
             .await
             .unwrap();
@@ -1555,9 +1598,13 @@ mod tests {
                 version: "dev".to_string(),
                 db_path: "data/headless-rss.sqlite3".to_string(),
                 feed_update_frequency_min: 15,
+                openai_api_key: None,
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                openai_model: "gpt-5-nano".to_string(),
                 testing_mode: true,
             }),
             feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
+            article_http_client: crate::http_client::build_article_http_client().unwrap(),
         }
     }
 
@@ -1997,9 +2044,13 @@ mod tests {
                 version: "dev".to_string(),
                 db_path: "data/headless-rss.sqlite3".to_string(),
                 feed_update_frequency_min: 15,
+                openai_api_key: None,
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                openai_model: "gpt-5-nano".to_string(),
                 testing_mode: true,
             }),
             feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
+            article_http_client: crate::http_client::build_article_http_client().unwrap(),
         };
 
         let response = app(state)
@@ -2026,9 +2077,13 @@ mod tests {
                 version: "dev".to_string(),
                 db_path: "data/headless-rss.sqlite3".to_string(),
                 feed_update_frequency_min: 15,
+                openai_api_key: None,
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                openai_model: "gpt-5-nano".to_string(),
                 testing_mode: false,
             }),
             feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
+            article_http_client: crate::http_client::build_article_http_client().unwrap(),
         };
 
         let response = app(state)
@@ -2484,9 +2539,13 @@ mod tests {
                 version: "dev".to_string(),
                 db_path: "data/headless-rss.sqlite3".to_string(),
                 feed_update_frequency_min: 15,
+                openai_api_key: None,
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                openai_model: "gpt-5-nano".to_string(),
                 testing_mode: true,
             }),
             feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
+            article_http_client: crate::http_client::build_article_http_client().unwrap(),
         };
 
         let wrong = base64::engine::general_purpose::STANDARD.encode("wronguser:wrongpass");
@@ -2520,9 +2579,13 @@ mod tests {
                 version: "dev".to_string(),
                 db_path: "data/headless-rss.sqlite3".to_string(),
                 feed_update_frequency_min: 15,
+                openai_api_key: None,
+                openai_base_url: "https://api.openai.com/v1".to_string(),
+                openai_model: "gpt-5-nano".to_string(),
                 testing_mode: true,
             }),
             feed_http_client: crate::http_client::build_feed_http_client().unwrap(),
+            article_http_client: crate::http_client::build_article_http_client().unwrap(),
         };
 
         let ok = base64::engine::general_purpose::STANDARD.encode("testuser:testpass");

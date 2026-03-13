@@ -1,13 +1,12 @@
-use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use feed_rs::model::Entry;
 use rand::Rng;
-use regex::Regex;
 use sqlx::{FromRow, SqlitePool};
 
 use crate::config::Config;
+use crate::content::{self, FeedContentState};
 use crate::db;
 use crate::http_client;
 use crate::ssrf;
@@ -29,6 +28,10 @@ const NINETY_DAYS: i64 = 90 * ONE_DAY;
 struct FeedToUpdate {
     id: i64,
     url: String,
+    title: Option<String>,
+    last_quality_check: Option<i64>,
+    use_extracted_fulltext: bool,
+    use_llm_summary: bool,
 }
 
 pub async fn update_all(config: &Config) -> Result<()> {
@@ -36,41 +39,53 @@ pub async fn update_all(config: &Config) -> Result<()> {
     let pool = db::create_pool(&config.db_path)
         .await
         .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
-    let updated = update_due_feeds(&pool, config.testing_mode).await?;
+    let updated = update_due_feeds(&pool, config, config.testing_mode).await?;
     tracing::info!(updated, "finished rust feed update cycle");
     Ok(())
 }
 
-pub async fn update_due_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<usize> {
+pub async fn update_due_feeds(
+    pool: &SqlitePool,
+    config: &Config,
+    testing_mode: bool,
+) -> Result<usize> {
     let now_ts = unix_now();
     let feeds: Vec<FeedToUpdate> = sqlx::query_as(
-        "SELECT id, url FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
+        "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
     )
     .bind(now_ts)
     .fetch_all(pool)
     .await
     .context("failed to query due feeds")?;
 
-    update_feed_batch(pool, testing_mode, feeds, "due").await
+    update_feed_batch(pool, config, testing_mode, feeds, "due").await
 }
 
-pub async fn update_all_regular_feeds(pool: &SqlitePool, testing_mode: bool) -> Result<usize> {
+pub async fn update_all_regular_feeds(
+    pool: &SqlitePool,
+    config: &Config,
+    testing_mode: bool,
+) -> Result<usize> {
     let feeds: Vec<FeedToUpdate> =
-        sqlx::query_as("SELECT id, url FROM feed WHERE is_mailing_list = 0")
+        sqlx::query_as(
+            "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0",
+        )
             .fetch_all(pool)
             .await
             .context("failed to query all regular feeds")?;
 
-    update_feed_batch(pool, testing_mode, feeds, "all").await
+    update_feed_batch(pool, config, testing_mode, feeds, "all").await
 }
 
 async fn update_feed_batch(
     pool: &SqlitePool,
+    config: &Config,
     testing_mode: bool,
     feeds: Vec<FeedToUpdate>,
     batch_kind: &str,
 ) -> Result<usize> {
     let feed_http_client = http_client::build_feed_http_client()?;
+    let article_http_client = http_client::build_article_http_client()?;
 
     tracing::debug!(
         due_feeds = feeds.len(),
@@ -83,8 +98,15 @@ async fn update_feed_batch(
     let mut failed = 0usize;
 
     for feed in &feeds {
-        if let Err(err) =
-            update_single_feed(pool, &feed_http_client, feed.id, &feed.url, testing_mode).await
+        if let Err(err) = update_single_feed(
+            pool,
+            &feed_http_client,
+            &article_http_client,
+            config,
+            feed,
+            testing_mode,
+        )
+        .await
         {
             let detail = err.to_string();
             tracing::warn!(feed_id = feed.id, error = %detail, "feed update failed");
@@ -116,10 +138,13 @@ async fn update_feed_batch(
 async fn update_single_feed(
     pool: &SqlitePool,
     feed_http_client: &reqwest::Client,
-    feed_id: i64,
-    url: &str,
+    article_http_client: &reqwest::Client,
+    config: &Config,
+    feed: &FeedToUpdate,
     testing_mode: bool,
 ) -> Result<()> {
+    let feed_id = feed.id;
+    let url = feed.url.as_str();
     tracing::debug!(feed_id, url, testing_mode, "starting feed update");
     ssrf::validate_remote_url(url, testing_mode).await?;
 
@@ -137,13 +162,37 @@ async fn update_single_feed(
         .await
         .context("failed to read response body")?;
     let parsed = feed_rs::parser::parse(&bytes[..]).context("failed to parse feed")?;
+    let content_state = content::maybe_refresh_feed_content_state(
+        pool,
+        article_http_client,
+        config,
+        feed_id,
+        feed.title.as_deref(),
+        FeedContentState {
+            last_quality_check: feed.last_quality_check,
+            use_extracted_fulltext: feed.use_extracted_fulltext,
+            use_llm_summary: feed.use_llm_summary,
+        },
+        &parsed.entries,
+    )
+    .await?;
 
     let mut inserted = 0usize;
     let mut processed = 0usize;
     let mut current_feed_guid_hashes = Vec::new();
     for entry in parsed.entries.iter().take(50) {
         processed += 1;
-        if insert_article_from_entry(pool, feed_id, entry, &mut current_feed_guid_hashes).await? {
+        if insert_article_from_entry(
+            pool,
+            article_http_client,
+            config,
+            feed_id,
+            entry,
+            &mut current_feed_guid_hashes,
+            content_state,
+        )
+        .await?
+        {
             inserted += 1;
         }
     }
@@ -256,9 +305,12 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
 
 async fn insert_article_from_entry(
     pool: &SqlitePool,
+    article_http_client: &reqwest::Client,
+    config: &Config,
     feed_id: i64,
     entry: &Entry,
     current_feed_guid_hashes: &mut Vec<String>,
+    content_state: FeedContentState,
 ) -> Result<bool> {
     let guid = if entry.id.is_empty() {
         entry
@@ -294,53 +346,45 @@ async fn insert_article_from_entry(
         .as_ref()
         .and_then(|content| content.body.clone());
     let summary = entry.summary.as_ref().map(|s| s.content.clone());
-    let media_thumbnail = extract_first_image_url(content.as_deref().or(summary.as_deref()));
-    let content_hash = content
-        .as_ref()
-        .map(|value| format!("{:x}", md5::compute(value.as_bytes())));
     let title = entry.title.as_ref().map(|t| t.content.clone());
     let url = entry.links.first().map(|l| l.href.clone());
     let author = entry.authors.first().map(|a| a.name.clone());
     let now_ts = unix_now();
     let updated = entry.updated.map(|dt| dt.timestamp()).unwrap_or(now_ts);
     let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
+    let enriched = content::enrich_article_content(
+        article_http_client,
+        config,
+        url.as_deref(),
+        content,
+        summary,
+        None,
+        content_state.use_extracted_fulltext,
+        content_state.use_llm_summary,
+    )
+    .await;
 
     sqlx::query(
         "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, 0, 1, ?, ?, ?)",
     )
     .bind(title)
-    .bind(content)
+    .bind(enriched.content)
     .bind(author)
-    .bind(content_hash)
+    .bind(enriched.content_hash)
     .bind(feed_id)
     .bind(guid)
     .bind(guid_hash)
     .bind(now_ts)
-    .bind(media_thumbnail)
+    .bind(enriched.media_thumbnail)
     .bind(published)
     .bind(updated)
     .bind(url)
-    .bind(summary)
+    .bind(enriched.summary)
     .execute(pool)
     .await
     .context("failed to insert article")?;
 
     Ok(true)
-}
-
-/// Extracts the first image source URL from HTML body content.
-fn extract_first_image_url(html_content: Option<&str>) -> Option<String> {
-    let html = html_content?;
-
-    static IMG_SRC_REGEX: OnceLock<Regex> = OnceLock::new();
-    let regex = IMG_SRC_REGEX.get_or_init(|| {
-        Regex::new(r#"(?is)<img[^>]*\bsrc\s*=\s*[\"']([^\"']+)[\"']"#)
-            .expect("valid image src regex")
-    });
-
-    regex
-        .captures(html)
-        .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
 
 fn unix_now() -> i64 {
@@ -359,6 +403,8 @@ mod tests {
     use sqlx::SqlitePool;
     use tokio::net::TcpListener;
 
+    use crate::config::Config;
+
     use super::{
         NINETY_DAYS, ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now,
     };
@@ -367,7 +413,7 @@ mod tests {
     async fn setup_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(
-            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR, is_mailing_list BOOLEAN NOT NULL DEFAULT 0)",
+            "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR, is_mailing_list BOOLEAN NOT NULL DEFAULT 0, last_quality_check INTEGER, use_extracted_fulltext BOOLEAN NOT NULL DEFAULT 0, use_llm_summary BOOLEAN NOT NULL DEFAULT 0)",
         )
         .execute(&pool)
         .await
@@ -379,6 +425,10 @@ mod tests {
         .await
         .unwrap();
         pool
+    }
+
+    fn test_config() -> Config {
+        Config::from_env()
     }
 
     async fn start_fixture_feed_server() -> String {
@@ -468,14 +518,14 @@ mod tests {
     async fn update_due_feeds_inserts_new_articles() {
         let pool = setup_pool().await;
         let url = start_fixture_feed_server().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (1, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (1, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
             .bind(url)
             .execute(&pool)
             .await
             .unwrap();
 
         let now_before = unix_now();
-        let updated = update_due_feeds(&pool, true).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
         let now_after = unix_now();
         assert_eq!(updated, 1);
 
@@ -497,8 +547,8 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        let min_expected = now_before + TWELVE_HOURS - 2;
-        let max_expected = now_after + TWELVE_HOURS + 2;
+        let min_expected = now_before + ONE_DAY - THIRTY_MINUTES - 2;
+        let max_expected = now_after + ONE_DAY + THIRTY_MINUTES + 2;
         assert!(
             (min_expected..=max_expected).contains(&next_update_time),
             "next_update_time={next_update_time}, expected range [{min_expected}, {max_expected}]"
@@ -530,13 +580,13 @@ mod tests {
     async fn update_due_feeds_extracts_media_thumbnail_from_entry_body() {
         let pool = setup_pool().await;
         let url = start_fixture_feed_server().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (4, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (4, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
             .bind(url)
             .execute(&pool)
             .await
             .unwrap();
 
-        let updated = update_due_feeds(&pool, true).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
         assert_eq!(updated, 1);
 
         let thumbnail: Option<String> =
@@ -551,13 +601,13 @@ mod tests {
     async fn update_due_feeds_sends_feed_headers() {
         let pool = setup_pool().await;
         let url = start_fixture_feed_server_requiring_headers().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (5, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (5, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
             .bind(url)
             .execute(&pool)
             .await
             .unwrap();
 
-        let updated = update_due_feeds(&pool, true).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
         assert_eq!(updated, 1);
 
         let article_count: i64 =
@@ -577,12 +627,14 @@ mod tests {
     #[tokio::test]
     async fn update_due_feeds_persists_errors() {
         let pool = setup_pool().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (2, 'file:///etc/passwd', 'Bad', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL, 0)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (2, 'file:///etc/passwd', 'Bad', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL, 0, NULL, 0, 0)")
             .execute(&pool)
             .await
             .unwrap();
 
-        let updated = update_due_feeds(&pool, false).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config(), false)
+            .await
+            .unwrap();
         assert_eq!(updated, 1);
 
         let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 2")
@@ -605,12 +657,14 @@ mod tests {
     #[tokio::test]
     async fn update_due_feeds_skips_mailing_list_rows() {
         let pool = setup_pool().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (3, 'newsletter@example.com', 'News', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL, 1)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (3, 'newsletter@example.com', 'News', NULL, 1, 0, 1, 0, NULL, 0, 0, NULL, 1, NULL, 0, 0)")
             .execute(&pool)
             .await
             .unwrap();
 
-        let updated = update_due_feeds(&pool, false).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config(), false)
+            .await
+            .unwrap();
         assert_eq!(updated, 0);
 
         let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 3")
@@ -630,13 +684,15 @@ mod tests {
     async fn update_all_regular_feeds_ignores_next_update_time_gate() {
         let pool = setup_pool().await;
         let url = start_fixture_feed_server().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (6, ?, 'Updater Fixture', NULL, 1, 9999999999, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (6, ?, 'Updater Fixture', NULL, 1, 9999999999, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
             .bind(url)
             .execute(&pool)
             .await
             .unwrap();
 
-        let updated = update_all_regular_feeds(&pool, true).await.unwrap();
+        let updated = update_all_regular_feeds(&pool, &test_config(), true)
+            .await
+            .unwrap();
         assert_eq!(updated, 1);
 
         let article_count: i64 =
@@ -651,7 +707,7 @@ mod tests {
     async fn update_due_feeds_cleans_only_eligible_stale_articles() {
         let pool = setup_pool().await;
         let url = start_fixture_feed_server().await;
-        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list) VALUES (7, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0)")
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (7, ?, 'Updater Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
             .bind(url)
             .execute(&pool)
             .await
@@ -670,7 +726,7 @@ mod tests {
         insert_test_article_with_hash(&pool, 7, in_payload_guid, &in_payload_hash, stale, 0, 0)
             .await;
 
-        let updated = update_due_feeds(&pool, true).await.unwrap();
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
         assert_eq!(updated, 1);
 
         let deleted_exists: Option<i64> =
@@ -709,6 +765,121 @@ mod tests {
                 .await
                 .unwrap();
         assert!(in_payload_exists.is_some());
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_enables_extracted_fulltext_when_quality_is_better() {
+        let pool = setup_pool().await;
+        let url = start_quality_fixture_feed_server(
+            "Short teaser.",
+            "<html><body><article><p>This is a long extracted article body with enough detail to clearly exceed the teaser summary in the feed.</p><p>It contains additional explanation and supporting context.</p></article><footer>Footer</footer></body></html>",
+        )
+        .await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (8, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let flags: (bool, bool, Option<i64>) = sqlx::query_as(
+            "SELECT use_extracted_fulltext, use_llm_summary, last_quality_check FROM feed WHERE id = 8",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(flags.0);
+        assert!(flags.1);
+        assert!(flags.2.is_some());
+
+        let content: Option<String> =
+            sqlx::query_scalar("SELECT content FROM article WHERE feed_id = 8 LIMIT 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(
+            content
+                .unwrap_or_default()
+                .contains("long extracted article body")
+        );
+    }
+
+    #[tokio::test]
+    async fn update_due_feeds_leaves_extraction_disabled_when_quality_is_not_better() {
+        let pool = setup_pool().await;
+        let url = start_quality_fixture_feed_server(
+            "This feed summary already includes substantial detail about the article contents.",
+            "<html><body><article><p>Short article.</p></article></body></html>",
+        )
+        .await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (9, ?, 'Quality Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, NULL, 0, 0)")
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let updated = update_due_feeds(&pool, &test_config(), true).await.unwrap();
+        assert_eq!(updated, 1);
+
+        let flags: (bool, bool, Option<i64>) = sqlx::query_as(
+            "SELECT use_extracted_fulltext, use_llm_summary, last_quality_check FROM feed WHERE id = 9",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(!flags.0);
+        assert!(!flags.1);
+        assert!(flags.2.is_some());
+    }
+
+    async fn start_quality_fixture_feed_server(entry_summary: &str, article_html: &str) -> String {
+        let entry_summary = entry_summary.to_string();
+        let article_html = article_html.to_string();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let article_url = format!("http://{addr}/article");
+        let app = Router::new()
+            .route(
+                "/article",
+                get(move || {
+                    let article_html = article_html.clone();
+                    async move { ([(http_header::CONTENT_TYPE, "text/html")], article_html) }
+                }),
+            )
+            .route(
+                "/atom.xml",
+                get(move || {
+                    let entry_summary = entry_summary.clone();
+                    let article_url = article_url.clone();
+                    async move {
+                        (
+                            [(http_header::CONTENT_TYPE, "application/atom+xml")],
+                            format!(
+                                r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Quality Fixture</title>
+  <link href="http://example.org/" />
+  <updated>2026-03-06T00:00:00Z</updated>
+  <id>tag:example.org,2026:feed-quality</id>
+  <entry>
+    <title>Quality Entry</title>
+        <link href="{article_url}" />
+    <id>tag:example.org,2026:quality-entry</id>
+    <updated>2026-03-06T00:00:00Z</updated>
+    <summary>{entry_summary}</summary>
+  </entry>
+</feed>"#,
+                            ),
+                        )
+                    }
+                }),
+            );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/atom.xml")
     }
 
     async fn insert_test_article(

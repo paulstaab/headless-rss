@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod content;
 mod db;
 mod email_credentials;
 mod http_client;
@@ -97,21 +98,31 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
         .await
         .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
     let feed_http_client = http_client::build_feed_http_client()?;
+    let article_http_client = http_client::build_article_http_client()?;
 
     let scheduler_pool = pool.clone();
+    let scheduler_config = config.clone();
     let scheduler_testing_mode = config.testing_mode;
     let scheduler_interval = Duration::from_secs((config.feed_update_frequency_min as u64) * 60);
     tokio::spawn(async move {
-        if let Err(err) =
-            updater::update_all_regular_feeds(&scheduler_pool, scheduler_testing_mode).await
+        if let Err(err) = updater::update_all_regular_feeds(
+            &scheduler_pool,
+            &scheduler_config,
+            scheduler_testing_mode,
+        )
+        .await
         {
             tracing::warn!(error = %err, "startup forced feed update cycle failed");
         }
 
         loop {
             sleep(scheduler_interval).await;
-            if let Err(err) =
-                updater::update_due_feeds(&scheduler_pool, scheduler_testing_mode).await
+            if let Err(err) = updater::update_due_feeds(
+                &scheduler_pool,
+                &scheduler_config,
+                scheduler_testing_mode,
+            )
+            .await
             {
                 tracing::warn!(error = %err, "scheduled feed update cycle failed");
             }
@@ -122,6 +133,7 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
         pool,
         config: config.clone(),
         feed_http_client,
+        article_http_client,
     };
 
     let app = api::app(state);

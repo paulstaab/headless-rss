@@ -46,6 +46,7 @@ The `OPENAI_API_KEY` environment variable is optional. When set, it enables:
 2. **Newsletter Parsing**: Intelligent parsing of email newsletters (splitting digest emails into separate articles).
 
 Use `OPENAI_MODEL` to specify the model (default: `gpt-5-nano`).
+Use `OPENAI_BASE_URL` to target an OpenAI-compatible API base URL instead of the default `https://api.openai.com/v1`.
 
 ## Email Newsletter Integration
 

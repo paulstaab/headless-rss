@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::http::header;
-use axum::routing::get;
+use axum::routing::{get, post};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use reqwest::{Client, StatusCode};
@@ -599,7 +599,7 @@ async fn ts_e2e_019_restart_with_persistent_database() {
 
     let port = find_free_port();
     let base_url = format!("http://127.0.0.1:{port}");
-    let server = spawn_server(&db_path, port, None, None);
+    let server = spawn_server(&db_path, port, None, None, &[]);
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -622,7 +622,7 @@ async fn ts_e2e_019_restart_with_persistent_database() {
 
     let port_after = find_free_port();
     let base_url_after = format!("http://127.0.0.1:{port_after}");
-    let _server_after = spawn_server(&db_path, port_after, None, None);
+    let _server_after = spawn_server(&db_path, port_after, None, None, &[]);
     wait_for_ready(&client, &base_url_after).await;
 
     let feeds_after =
@@ -630,6 +630,78 @@ async fn ts_e2e_019_restart_with_persistent_database() {
     let count_after = feeds_after["feeds"].as_array().map_or(0, Vec::len);
     assert_eq!(count_before, count_after);
 
+    drop(temp_dir);
+}
+
+#[tokio::test]
+async fn ts_e2e_020_generates_llm_summary_from_extracted_article_content() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let db_path = temp_dir.path().join("journey-llm.sqlite3");
+
+    let fixture_base_url = start_mock_llm_fixture_server().await;
+    let feed_url = format!("{fixture_base_url}/llm.xml");
+
+    let port = find_free_port();
+    let base_url = format!("http://127.0.0.1:{port}");
+    let server = spawn_server(
+        &db_path,
+        port,
+        None,
+        None,
+        &[
+            ("OPENAI_API_KEY", "journey-test-key"),
+            ("OPENAI_BASE_URL", &format!("{fixture_base_url}/v1")),
+            ("OPENAI_MODEL", "journey-summary-model"),
+        ],
+    );
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("failed to create http client");
+    wait_for_ready(&client, &base_url).await;
+
+    let status = add_feed(&client, &base_url, &feed_url, None).await;
+    assert_eq!(status, StatusCode::OK, "feed add failed for {feed_url}");
+
+    let items = get_json_from_client(
+        &client,
+        &base_url,
+        &format!("{API_V13}/items?type=3&id=0"),
+        None,
+    )
+    .await;
+    let item = items["items"]
+        .as_array()
+        .and_then(|entries| entries.first())
+        .expect("missing inserted item");
+    let item_id = item["id"].as_i64().expect("missing item id");
+
+    assert_eq!(
+        item["body"].as_str(),
+        Some("Fixture summary from mock LLM. (AI generated)")
+    );
+
+    let content = get_json_from_client(
+        &client,
+        &base_url,
+        &format!("{API_V13}/items/{item_id}/content"),
+        None,
+    )
+    .await;
+    let content_body = content["content"]
+        .as_str()
+        .expect("missing item content body");
+    assert!(
+        content_body.contains("important technical details"),
+        "expected extracted article content, got: {content_body}"
+    );
+    assert!(
+        !content_body.contains("Cookie banner"),
+        "expected boilerplate removal, got: {content_body}"
+    );
+
+    drop(server);
     drop(temp_dir);
 }
 
@@ -643,7 +715,13 @@ async fn setup_context(auth: Option<(&str, &str)>) -> ScenarioContext {
 
     let port = find_free_port();
     let base_url = format!("http://127.0.0.1:{port}");
-    let server = spawn_server(&db_path, port, auth_in.map(|a| a.0), auth_in.map(|a| a.1));
+    let server = spawn_server(
+        &db_path,
+        port,
+        auth_in.map(|a| a.0),
+        auth_in.map(|a| a.1),
+        &[],
+    );
 
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
@@ -839,6 +917,7 @@ fn spawn_server(
     port: u16,
     username: Option<&str>,
     password: Option<&str>,
+    extra_envs: &[(&str, &str)],
 ) -> RunningServer {
     let mut command = Command::new(binary_path());
     command
@@ -857,6 +936,9 @@ fn spawn_server(
     }
     if let Some(pass) = password {
         command.env("PASSWORD", pass);
+    }
+    for (key, value) in extra_envs {
+        command.env(key, value);
     }
 
     let child = command.spawn().expect("failed to spawn rust api server");
@@ -1004,6 +1086,76 @@ async fn start_mock_feed_server() -> String {
     format!("http://{addr}")
 }
 
+async fn start_mock_llm_fixture_server() -> String {
+    let listener = TokioTcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind mock llm fixture listener");
+    let addr = listener
+        .local_addr()
+        .expect("failed to get mock llm fixture local address");
+    let base_url = format!("http://{addr}");
+
+    let app = Router::new()
+        .route(
+            "/llm.xml",
+            get({
+                let base_url = base_url.clone();
+                move || {
+                    let body = llm_atom_feed(&base_url);
+                    async move { ([(header::CONTENT_TYPE, "application/atom+xml")], body) }
+                }
+            }),
+        )
+        .route(
+            "/articles/llm-entry",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    r#"<!doctype html>
+<html>
+  <body>
+    <header>Cookie banner and navigation</header>
+    <main>
+      <article>
+        <h1>Mocked Article</h1>
+        <p>This article body contains important technical details about reliable full-text extraction in RSS workflows.</p>
+        <p>It is long enough to justify summarization and to verify that the extracted content replaces the short feed teaser.</p>
+      </article>
+    </main>
+    <footer>Cookie banner</footer>
+  </body>
+</html>"#,
+                )
+            }),
+        )
+        .route(
+            "/v1/chat/completions",
+            post(|| async {
+                (
+                    [(header::CONTENT_TYPE, "application/json")],
+                    json!({
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": "{\"summary\":\"Fixture summary from mock LLM.\"}"
+                                }
+                            }
+                        ]
+                    })
+                    .to_string(),
+                )
+            }),
+        );
+
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("mock llm fixture server crashed");
+    });
+
+    base_url
+}
+
 /// Builds a tiny Atom feed fixture with a single entry.
 fn atom_feed(feed_id: &str, entry_id: &str, title: &str) -> String {
     format!(
@@ -1020,6 +1172,25 @@ fn atom_feed(feed_id: &str, entry_id: &str, title: &str) -> String {
     <updated>2026-03-09T00:00:00Z</updated>
     <summary>{title} summary</summary>
   </entry>
+</feed>"#
+    )
+}
+
+fn llm_atom_feed(base_url: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>LLM Fixture Feed</title>
+    <link href="{base_url}/feeds/llm" />
+    <updated>2026-03-09T00:00:00Z</updated>
+    <id>tag:example.com,2026:llm-feed</id>
+    <entry>
+        <title>LLM Fixture Entry</title>
+        <link href="{base_url}/articles/llm-entry" />
+        <id>tag:example.com,2026:llm-entry</id>
+        <updated>2026-03-09T00:00:00Z</updated>
+        <content type="html"><![CDATA[<p>Short teaser only.</p>]]></content>
+    </entry>
 </feed>"#
     )
 }

@@ -10,7 +10,7 @@ This document tracks Rust implementation progress against the technology-indepen
 - `Unknown`: Status has not been verified yet.
 
 ## Last Updated
-- 2026-03-10
+- 2026-03-13
 
 ## Status By Requirement
 
@@ -52,12 +52,12 @@ This document tracks Rust implementation progress against the technology-indepen
 | ITEM-008 | Implemented | Read/star changes update `last_modified`. |
 | ITEM-009 | Implemented | Boundary read operations by newest item ID implemented. |
 | CNT-001 | Implemented | First image extraction from HTML content implemented. |
-| CNT-002 | Not Started | Optional full-text extraction not fully ported. |
-| CNT-003 | Not Started | Monthly feed-quality evaluation not fully ported. |
-| CNT-004 | Not Started | `use_llm_summary` quality gating not fully ported. |
-| CNT-005 | Not Started | Optional LLM summary generation not fully ported. |
-| CNT-006 | Not Started | LLM summary suffix behavior not fully ported. |
-| CNT-007 | Not Started | Non-LLM truncation fallback not fully ported. |
+| CNT-002 | Implemented | Rust article ingestion now supports optional full-text extraction from article URLs using Mozilla Readability via `readability-js`. |
+| CNT-003 | Implemented | Rust updater and feed-create paths now run monthly feed-quality evaluation and persist the decision flags. |
+| CNT-004 | Implemented | Rust only enables `use_llm_summary` when extracted full-text quality is sufficient. |
+| CNT-005 | Implemented | Rust supports optional OpenAI-backed article summary generation when `OPENAI_API_KEY` is configured. |
+| CNT-006 | Implemented | Rust appends ` (AI generated)` to successful LLM summaries. |
+| CNT-007 | Implemented | Rust falls back to truncation when LLM summarization is disabled and content is long. |
 | EML-001 | Implemented | Email credentials storage path exists. |
 | EML-002 | Implemented | IMAP connectivity/login validation before persistence exists. |
 | EML-003 | Partial | End-to-end newsletter ingestion is not fully verified in journey tests. |

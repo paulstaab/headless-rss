@@ -8,6 +8,9 @@ pub struct Config {
     pub version: String,
     pub db_path: String,
     pub feed_update_frequency_min: i64,
+    pub openai_api_key: Option<String>,
+    pub openai_base_url: String,
+    pub openai_model: String,
     pub testing_mode: bool,
 }
 
@@ -21,6 +24,10 @@ impl Config {
             version: env::var("VERSION").unwrap_or_else(|_| "dev".to_string()),
             db_path,
             feed_update_frequency_min: get_env_int("FEED_UPDATE_FREQUENCY_MIN", 15),
+            openai_api_key: get_env_str("OPENAI_API_KEY"),
+            openai_base_url: env::var("OPENAI_BASE_URL")
+                .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
+            openai_model: env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-nano".to_string()),
             testing_mode: env::var("TESTING_MODE")
                 .ok()
                 .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
@@ -30,6 +37,10 @@ impl Config {
 
     pub fn auth_enabled(&self) -> bool {
         self.username.is_some() && self.password.is_some()
+    }
+
+    pub fn llm_enabled(&self) -> bool {
+        self.openai_api_key.is_some()
     }
 }
 

@@ -114,7 +114,7 @@ Implementation progress is tracked separately in `docs/rust-implementation-statu
 
 ### Configuration
 - `CFG-001`: Runtime configuration shall be sourced from environment variables.
-- `CFG-002`: Supported variables shall include `USERNAME`, `PASSWORD`, `FEED_UPDATE_FREQUENCY_MIN`, `VERSION`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+- `CFG-002`: Supported variables shall include `USERNAME`, `PASSWORD`, `FEED_UPDATE_FREQUENCY_MIN`, `VERSION`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL`.
 - `CFG-003`: Defaults shall include `VERSION=dev`, `FEED_UPDATE_FREQUENCY_MIN=15`, and `OPENAI_MODEL=gpt-5-nano`.
 
 ### CLI
