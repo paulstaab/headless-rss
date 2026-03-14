@@ -1786,6 +1786,8 @@ checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 [[package]]
 name = "readability-js"
 version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d02138178afcfb4170784233319e903f79b4818759d6e1e657175b54c719f926"
 dependencies = [
  "rquickjs",
  "thiserror",

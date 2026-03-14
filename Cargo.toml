@@ -30,5 +30,3 @@ assert_cmd = "2.2"
 tempfile = "3.27"
 tower = { version = "0.5", features = ["util"] }
 
-[patch.crates-io]
-readability-js = { path = "vendor/readability-js" }

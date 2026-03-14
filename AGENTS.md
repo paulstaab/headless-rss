@@ -56,6 +56,7 @@ It combines workflow guidance with implementation-aware project conventions.
 - Keep CLI commands functional:
   - `cargo run -- update`
   - `cargo run -- add-email-credentials --server ... --port ... --username ... --password ...`
+- `cargo run -- --help` should remain usable.
 - `add-email-credentials` must validate mailbox connectivity before persisting credentials.
 
 ## Required Workflow
@@ -64,8 +65,12 @@ It combines workflow guidance with implementation-aware project conventions.
 - Run `cargo fetch` if dependencies have not been downloaded yet.
 
 2. Develop
+- Always keep requirements and test cases updated - see Documentation Sync Policy.
 - Prefer small, focused changes.
 - Preserve existing API behavior and response contracts.
+- When manual runtime validation is needed, start the API server with the VS Code task `Start Server` and keep it running in the background while testing.
+- The local server should listen on `http://localhost:8000`.
+- When finished, update the rustdoc comments for touched modules and functions if necessary. Also document reasons for implementation decisions there.
 
 3. Validate after changes
 - Run `Lint` task.
@@ -82,6 +87,39 @@ It combines workflow guidance with implementation-aware project conventions.
   - `curl http://localhost:8000/index.php/apps/news/api/v1-3/folders`
   - `curl http://localhost:8000/index.php/apps/news/api/v1-3/version`
 
+## Repository Structure
+```
+.
+├── .devcontainer/          # VS Code dev container configuration
+├── .github/                # GitHub workflows and config
+├── .pre-commit-config.yaml # Pre-commit hooks (Rust formatting/linting)
+├── Dockerfile              # Container build definition
+├── README.md               # Project overview and local usage
+├── Cargo.toml              # Rust project manifest
+├── Cargo.lock              # Locked Rust dependencies
+├── data/                   # SQLite database location
+├── docker/                 # Docker-related scripts
+├── docs/                   # Requirements, contracts, and test catalogs
+├── migrations/             # SQLx migrations
+├── src/                    # Main Rust application code
+├── tests/                  # Rust test suite
+└── vendor/                 # Vendored crates and assets
+```
+
+## Key API Endpoints
+- `/status` for health checks.
+- `/index.php/apps/news/api/v{version}/feeds` for Nextcloud News compatible feed operations (supports `v1-2` and `v1-3`).
+- `/index.php/apps/news/api/v{version}/folders` for folder operations (supports `v1-2` and `v1-3`).
+- `/index.php/apps/news/api/v{version}/items` for article and item operations (supports `v1-2` and `v1-3`).
+
+## Environment and Storage
+- `USERNAME` and `PASSWORD` are optional and enable HTTP Basic auth only when both are set.
+- By default, SQLite data lives at `data/headless-rss.sqlite3` (or `../data/headless-rss.sqlite3` depending on the working directory). This can be overridden via the `DATABASE_PATH` environment variable.
+- SQLx migrations are applied automatically on startup.
+
+## Troubleshooting
+- If tests fail due to database state, remove the SQLite database at the effective path (the value of `DATABASE_PATH` if set, otherwise the default such as `data/headless-rss.sqlite3*`) and rerun the relevant command or restart the server.
+
 ## Documentation Sync Policy
 When implementing fixes, refactors, or new features, keep documentation synchronized in the same change:
 - Update `docs/requirements.md` to reflect implemented requirements.
@@ -95,6 +133,7 @@ When implementing fixes, refactors, or new features, keep documentation synchron
   - `docs/api-nextcloud-v1-2-test-cases.md`
   - `docs/api-nextcloud-v1-3-test-cases.md`
 - If code behavior changes but docs are not updated, treat the task as incomplete.
+- Always add or update rustdoc comments when adding or changing a function or a module.
 
 ## Useful Paths
 - App entrypoint: `src/main.rs`
@@ -114,6 +153,3 @@ When implementing fixes, refactors, or new features, keep documentation synchron
 - Prefer behavior-preserving edits unless the task explicitly requests behavior changes.
 - Add or update tests when behavior changes.
 - Keep changes readable and easy to review.
-
-# Documentation
-- Always add or update rustdoc / docstring when adding or changing a function or a module.
