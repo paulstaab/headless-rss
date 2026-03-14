@@ -40,6 +40,7 @@ Test cases for implemented Nextcloud News API v1.2 behavior.
 - Verify read/unread bulk endpoints with v1.2 payload shape (`items`).
 - Verify star/unstar single-item endpoints using `feedId/guidHash` route format.
 - Verify star/unstar bulk endpoints with guid-hash payload objects.
+- Verify v1.2 guid-hash bulk star/unstar rejects payloads larger than 10,000 items with `400`.
 - Verify mark-all-read endpoint behavior.
 - Verify state-changing operations update `lastModified`.
 

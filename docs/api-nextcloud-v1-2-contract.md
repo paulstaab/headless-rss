@@ -85,10 +85,12 @@ Contract for the implemented Nextcloud News compatible API v1.2.
 - `PUT /items/{feedId}/{guidHash}/star`
 - `PUT /items/star/multiple`
   - Request: `{"items":[{"feedId":<int>,"guidHash":"<string>"}, ...]}`
+  - Error: `400` if request contains more than 10,000 items
   - Error: `404` if any item unresolved
 - `PUT /items/{feedId}/{guidHash}/unstar`
 - `PUT /items/unstar/multiple`
   - Request: same shape as star/multiple
+  - Error: `400` if request contains more than 10,000 items
   - Error: `404` if any item unresolved
 - `PUT /items/read`
   - Request: `{"newestItemId": <int>}`

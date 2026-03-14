@@ -85,6 +85,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `ITEM-007`: Single and bulk star/unstar operations shall be supported.
 - `ITEM-008`: Read/star state changes shall update `last_modified`.
 - `ITEM-009`: Mark-as-read operations shall support boundary behavior using newest item ID for feed, folder, and global scopes.
+- `ITEM-010`: v1.2 GUID-hash bulk star/unstar requests shall reject payloads with more than 10,000 items using `400 Bad Request`.
 
 ### Content Extraction And Summarization
 - `CNT-001`: If feed metadata does not provide a thumbnail, the system shall extract the first image URL from HTML content when available.
