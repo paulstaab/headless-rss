@@ -701,6 +701,34 @@ async fn v1_2_mark_multiple_guid_items_as_starred_updates_last_modified() {
 }
 
 #[tokio::test]
+async fn v1_2_mark_multiple_guid_items_rejects_oversized_payload() {
+    let item = serde_json::json!({"feedId":10,"guidHash":"guid-hash-1"});
+    let payload = serde_json::json!({"items": vec![item; 10_001]}).to_string();
+
+    let response = app(state(setup_pool().await))
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/index.php/apps/news/api/v1-2/items/star/multiple")
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 400);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let parsed: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        parsed["detail"],
+        "too many items in request: 10001 (max 10000)"
+    );
+}
+
+#[tokio::test]
 async fn v1_3_mark_multiple_items_as_unread_updates_last_modified() {
     let pool = setup_pool().await;
     sqlx::query("UPDATE article SET unread = 0, last_modified = 200 WHERE id = 100")

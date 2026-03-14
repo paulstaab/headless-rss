@@ -32,6 +32,14 @@ pub(super) fn ssrf_error<E: std::fmt::Display>(error: E) -> ApiError {
     )
 }
 
+/// Returns a bad-request error with a caller-provided detail message.
+pub(super) fn bad_request_error<E: std::fmt::Display>(error: E) -> ApiError {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "detail": error.to_string() })),
+    )
+}
+
 /// Returns a not-found error for a missing feed identifier.
 pub(super) fn feed_not_found_with_id(feed_id: i64) -> ApiError {
     (
