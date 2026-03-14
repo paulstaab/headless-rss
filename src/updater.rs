@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rand::Rng;
+use rand::RngExt;
 use sqlx::{FromRow, SqlitePool};
 
 use crate::article_store::{self, InsertArticleOutcome};
