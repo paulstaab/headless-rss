@@ -27,7 +27,6 @@ const NINETY_DAYS: i64 = 90 * ONE_DAY;
 struct FeedToUpdate {
     id: i64,
     url: String,
-    title: Option<String>,
     last_quality_check: Option<i64>,
     use_extracted_fulltext: bool,
     use_llm_summary: bool,
@@ -50,7 +49,7 @@ pub async fn update_due_feeds(
 ) -> Result<usize> {
     let now_ts = article_store::unix_now();
     let feeds: Vec<FeedToUpdate> = sqlx::query_as(
-        "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
+        "SELECT id, url, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
     )
     .bind(now_ts)
     .fetch_all(pool)
@@ -67,7 +66,7 @@ pub async fn update_all_regular_feeds(
 ) -> Result<usize> {
     let feeds: Vec<FeedToUpdate> =
         sqlx::query_as(
-            "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0",
+            "SELECT id, url, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0",
         )
             .fetch_all(pool)
             .await
@@ -108,7 +107,7 @@ async fn update_feed_batch(
         .await
         {
             let detail = err.to_string();
-            tracing::warn!(feed_id = feed.id, error = %detail, "feed update failed");
+            tracing::warn!(feed_id = feed.id, "feed update failed");
             sqlx::query(
                 "UPDATE feed SET update_error_count = update_error_count + 1, last_update_error = ? WHERE id = ?",
             )
@@ -146,7 +145,7 @@ async fn update_single_feed(
 ) -> Result<()> {
     let feed_id = feed.id;
     let url = feed.url.as_str();
-    tracing::debug!(feed_id, url, testing_mode, "starting feed update");
+    tracing::debug!(feed_id, testing_mode, "starting feed update");
     ssrf::validate_remote_url(url, testing_mode).await?;
 
     let response = feed_http_client
@@ -168,7 +167,6 @@ async fn update_single_feed(
         article_http_client,
         config,
         feed_id,
-        feed.title.as_deref(),
         FeedContentState {
             last_quality_check: feed.last_quality_check,
             use_extracted_fulltext: feed.use_extracted_fulltext,

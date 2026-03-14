@@ -101,31 +101,21 @@ where
     for credential in credentials {
         match fetcher(&credential) {
             Ok(raw_messages) => {
-                tracing::info!(
-                    username = %credential.username,
-                    count = raw_messages.len(),
-                    "fetched unread email messages"
-                );
+                tracing::info!(count = raw_messages.len(), "fetched unread email messages");
 
                 for raw_message in raw_messages {
                     if let Err(err) =
                         process_email_message(pool, &article_http_client, config, &raw_message)
                             .await
                     {
-                        tracing::warn!(
-                            username = %credential.username,
-                            error = %err,
-                            "failed to process newsletter email"
-                        );
+                        let _ = err;
+                        tracing::warn!("failed to process newsletter email");
                     }
                 }
             }
             Err(err) => {
-                tracing::warn!(
-                    username = %credential.username,
-                    error = %err,
-                    "failed to fetch unread emails from mailbox"
-                );
+                let _ = err;
+                tracing::warn!("failed to fetch unread emails from mailbox");
             }
         }
     }
@@ -624,7 +614,8 @@ async fn parse_newsletter_with_llm(
     let parsed: RawNewsletterLlmResult = match serde_json::from_str(&response_text) {
         Ok(parsed) => parsed,
         Err(err) => {
-            tracing::warn!(error = %err, "newsletter llm response was not valid JSON");
+            let _ = err;
+            tracing::warn!("newsletter llm response was not valid JSON");
             return None;
         }
     };

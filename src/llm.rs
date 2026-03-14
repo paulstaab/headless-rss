@@ -8,8 +8,6 @@ use serde::Deserialize;
 
 use crate::config::Config;
 
-const OPENAI_LOG_BODY_PREVIEW_CHARS: usize = 400;
-
 #[derive(Debug, Deserialize)]
 struct OpenAiChatCompletionResponse {
     choices: Vec<OpenAiChoice>,
@@ -41,22 +39,6 @@ fn format_error_chain(error: &dyn StdError) -> String {
     }
 
     chain.join(": ")
-}
-
-/// Truncates response text so warning logs keep enough context without flooding output.
-fn response_body_preview(body: &str) -> String {
-    let preview: String = body
-        .chars()
-        .take(OPENAI_LOG_BODY_PREVIEW_CHARS)
-        .collect::<String>()
-        .trim()
-        .to_string();
-
-    if body.chars().count() > OPENAI_LOG_BODY_PREVIEW_CHARS {
-        format!("{preview}...")
-    } else {
-        preview
-    }
 }
 
 /// Sends a structured chat-completion request and returns the first non-empty message content.
@@ -94,12 +76,10 @@ pub async fn request_chat_completion_content(
         Ok(response) => response,
         Err(err) => {
             tracing::error!(
-                error = %format_error_chain(&err),
                 is_timeout = err.is_timeout(),
                 is_connect = err.is_connect(),
                 is_request = err.is_request(),
                 timeout_seconds = config.openai_timeout_seconds,
-                url = %request_url,
                 operation,
                 "OpenAI request failed"
             );
@@ -109,24 +89,17 @@ pub async fn request_chat_completion_content(
 
     if !response.status().is_success() {
         let status = response.status();
-        let response_body = match response.text().await {
-            Ok(body) => response_body_preview(&body),
-            Err(err) => {
-                tracing::warn!(
-                    error = %format_error_chain(&err),
-                    url = %request_url,
-                    status = %status,
-                    operation,
-                    "failed to read OpenAI error response body"
-                );
-                "<unavailable>".to_string()
-            }
-        };
+        if let Err(err) = response.text().await {
+            let _ = err;
+            tracing::warn!(
+                status = %status,
+                operation,
+                "failed to read OpenAI error response body"
+            );
+        }
 
         tracing::warn!(
-            url = %request_url,
             status = %status,
-            response_body,
             operation,
             "OpenAI request returned non-success status"
         );
@@ -136,12 +109,8 @@ pub async fn request_chat_completion_content(
     let response_body = match response.text().await {
         Ok(body) => body,
         Err(err) => {
-            tracing::warn!(
-                error = %format_error_chain(&err),
-                url = %request_url,
-                operation,
-                "failed to read OpenAI response body"
-            );
+            let _ = err;
+            tracing::warn!(operation, "failed to read OpenAI response body");
             return None;
         }
     };
@@ -149,13 +118,8 @@ pub async fn request_chat_completion_content(
     let body: OpenAiChatCompletionResponse = match serde_json::from_str(&response_body) {
         Ok(body) => body,
         Err(err) => {
-            tracing::warn!(
-                error = %format_error_chain(&err),
-                url = %request_url,
-                response_body = %response_body_preview(&response_body),
-                operation,
-                "failed to decode OpenAI response"
-            );
+            let _ = err;
+            tracing::warn!(operation, "failed to decode OpenAI response");
             return None;
         }
     };
@@ -173,10 +137,7 @@ mod tests {
     use std::error::Error as StdError;
     use std::fmt;
 
-    use super::{
-        OPENAI_LOG_BODY_PREVIEW_CHARS, format_error_chain, openai_chat_completions_url,
-        response_body_preview,
-    };
+    use super::{format_error_chain, openai_chat_completions_url};
 
     #[derive(Debug)]
     struct TestError {
@@ -222,16 +183,6 @@ mod tests {
         assert_eq!(
             format_error_chain(&error),
             "top-level: mid-level: root-cause"
-        );
-    }
-
-    #[test]
-    fn response_body_preview_truncates_long_bodies() {
-        let preview = response_body_preview(&"x".repeat(OPENAI_LOG_BODY_PREVIEW_CHARS + 5));
-
-        assert_eq!(
-            preview,
-            format!("{}...", "x".repeat(OPENAI_LOG_BODY_PREVIEW_CHARS))
         );
     }
 }

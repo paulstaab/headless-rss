@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         port: 8000,
     }) {
         Commands::Serve { host, port } => {
-            tracing::debug!(host = %host, port, "cli command invoked: serve");
+            tracing::debug!("cli command invoked: serve");
             serve(config, host, port).await
         }
         Commands::Update => {
@@ -76,12 +76,7 @@ async fn main() -> anyhow::Result<()> {
             username,
             password,
         } => {
-            tracing::debug!(
-                server = %server,
-                port,
-                username = %username,
-                "cli command invoked: add-email-credentials"
-            );
+            tracing::debug!("cli command invoked: add-email-credentials");
             email_credentials::add_email_credentials(&config, server, port, username, password)
                 .await
         }
@@ -115,7 +110,8 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
         )
         .await
         {
-            tracing::warn!(error = %err, "startup forced feed update cycle failed");
+            let _ = err;
+            tracing::warn!("startup forced feed update cycle failed");
         }
 
         loop {
@@ -127,7 +123,8 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
             )
             .await
             {
-                tracing::warn!(error = %err, "scheduled feed update cycle failed");
+                let _ = err;
+                tracing::warn!("scheduled feed update cycle failed");
             }
         }
     });
@@ -147,7 +144,7 @@ async fn serve(config: Arc<Config>, host: String, port: u16) -> anyhow::Result<(
         .await
         .context("failed to bind tcp listener")?;
 
-    tracing::info!(%addr, "starting rust api server");
+    tracing::info!("starting rust api server");
 
     axum::serve(listener, app)
         .await
