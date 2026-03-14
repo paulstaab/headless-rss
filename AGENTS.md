@@ -114,11 +114,11 @@ It combines workflow guidance with implementation-aware project conventions.
 
 ## Environment and Storage
 - `USERNAME` and `PASSWORD` are optional and enable HTTP Basic auth only when both are set.
-- SQLite data lives at `data/headless-rss.sqlite3`.
+- By default, SQLite data lives at `data/headless-rss.sqlite3` (or `../data/headless-rss.sqlite3` depending on the working directory). This can be overridden via the `DATABASE_PATH` environment variable.
 - SQLx migrations are applied automatically on startup.
 
 ## Troubleshooting
-- If tests fail due to database state, remove `data/headless-rss.sqlite3*` and rerun the relevant command or restart the server.
+- If tests fail due to database state, remove the SQLite database at the effective path (the value of `DATABASE_PATH` if set, otherwise the default such as `data/headless-rss.sqlite3*`) and rerun the relevant command or restart the server.
 
 ## Documentation Sync Policy
 When implementing fixes, refactors, or new features, keep documentation synchronized in the same change:
