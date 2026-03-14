@@ -10,6 +10,10 @@ use super::AppState;
 use super::errors::{ApiResult, internal_error, item_not_found};
 use super::folders::MarkAllItemsReadIn;
 
+// Maximum number of GUID items allowed in a single request to prevent
+// unbounded memory allocation and database load from user input.
+const MAX_GUID_ITEMS_PER_REQUEST: usize = 10_000;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ItemsQueryParams {
@@ -569,7 +573,19 @@ async fn get_article_id_by_guid_hash(
 }
 
 async fn resolve_guid_item_ids(pool: &SqlitePool, items: Vec<GuidItemIn>) -> ApiResult<Vec<i64>> {
-    let mut ids = Vec::with_capacity(items.len());
+    let len = items.len();
+    // Guard against unbounded allocations and excessive work from user-controlled input.
+    if len > MAX_GUID_ITEMS_PER_REQUEST {
+        return Err(internal_error(
+            format!(
+                "too many items in request: {} (max {})",
+                len, MAX_GUID_ITEMS_PER_REQUEST
+            )
+            .into(),
+        ));
+    }
+
+    let mut ids = Vec::with_capacity(len);
     for item in items {
         ids.push(get_article_id_by_guid_hash(pool, item.feed_id, &item.guid_hash).await?);
     }
