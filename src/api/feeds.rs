@@ -254,7 +254,6 @@ async fn add_feed(
     let now_ts = article_store::unix_now();
     let title = parsed.title.map(|t| t.content);
     let link = parsed.links.first().map(|l| l.href.clone());
-    let feed_title = title.clone();
 
     let result = sqlx::query(
         "INSERT INTO feed (url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error) VALUES (?, ?, NULL, ?, ?, ?, 0, ?, 0, 0, NULL)",
@@ -275,7 +274,6 @@ async fn add_feed(
         article_http_client,
         config,
         feed_id,
-        feed_title.as_deref(),
         FeedContentState {
             last_quality_check: None,
             use_extracted_fulltext: false,

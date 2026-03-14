@@ -140,6 +140,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `SEC-003`: Localhost access may be allowed only in testing mode.
 - `SEC-004`: The same URL validation policy shall be applied consistently in all remote-fetch paths.
 - `SEC-005`: HTTP Basic auth shall be enforced only when both `USERNAME` and `PASSWORD` are configured.
+- `SEC-006`: The system shall not log user-provided content, including titles, feed content, mailbox identities, or externally generated content derived from user input. Logging feed or article URLs in case of problems is allowed to simplify debugging. Logging URIs of incomming request is generally allowed.
 
 ### Configuration
 - `CFG-001`: Runtime configuration shall be sourced from environment variables.

@@ -97,7 +97,6 @@ pub async fn maybe_refresh_feed_content_state(
     article_http_client: &Client,
     config: &Config,
     feed_id: i64,
-    feed_title: Option<&str>,
     current_state: FeedContentState,
     entries: &[Entry],
 ) -> Result<FeedContentState> {
@@ -105,13 +104,9 @@ pub async fn maybe_refresh_feed_content_state(
         return Ok(current_state);
     }
 
-    tracing::info!(feed_id, feed_title, "performing feed content quality check");
+    tracing::info!(feed_id, "performing feed content quality check");
     let Some(sample) = select_quality_sample(entries) else {
-        tracing::info!(
-            feed_id,
-            feed_title,
-            "no suitable article found for content quality check"
-        );
+        tracing::info!(feed_id, "no suitable article found for content quality check");
         return Ok(current_state);
     };
 
@@ -161,7 +156,6 @@ pub async fn maybe_refresh_feed_content_state(
 
     tracing::info!(
         feed_id,
-        feed_title,
         use_extracted_fulltext = next_state.use_extracted_fulltext,
         use_llm_summary = next_state.use_llm_summary,
         "feed content quality check completed"
