@@ -5,7 +5,6 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock /app/
 COPY src /app/src
 COPY migrations /app/migrations
-COPY vendor /app/vendor
 COPY docker/entrypoint /app/docker/entrypoint
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
