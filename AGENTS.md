@@ -70,7 +70,7 @@ It combines workflow guidance with implementation-aware project conventions.
 - Preserve existing API behavior and response contracts.
 - When manual runtime validation is needed, start the API server with the VS Code task `Start Server` and keep it running in the background while testing.
 - The local server should listen on `http://localhost:8000`.
-- When finished, update the rustdocs for touched modules and functions if neccessary. Also document reasons for implementation decisions there.
+- When finished, update the rustdocs for touched modules and functions if necessary. Also document reasons for implementation decisions there.
 
 3. Validate after changes
 - Run `Lint` task.
