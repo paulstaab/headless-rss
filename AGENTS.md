@@ -70,7 +70,7 @@ It combines workflow guidance with implementation-aware project conventions.
 - Preserve existing API behavior and response contracts.
 - When manual runtime validation is needed, start the API server with the VS Code task `Start Server` and keep it running in the background while testing.
 - The local server should listen on `http://localhost:8000`.
-- When finished, update the rustdocs for touched modules and functions if necessary. Also document reasons for implementation decisions there.
+- When finished, update the rustdoc comments for touched modules and functions if necessary. Also document reasons for implementation decisions there.
 
 3. Validate after changes
 - Run `Lint` task.
@@ -133,7 +133,7 @@ When implementing fixes, refactors, or new features, keep documentation synchron
   - `docs/api-nextcloud-v1-2-test-cases.md`
   - `docs/api-nextcloud-v1-3-test-cases.md`
 - If code behavior changes but docs are not updated, treat the task as incomplete.
-- Always add or update rustdoc / docstring when adding or changing a function or a module.
+- Always add or update rustdoc comments when adding or changing a function or a module.
 
 ## Useful Paths
 - App entrypoint: `src/main.rs`
