@@ -110,10 +110,7 @@ pub async fn request_chat_completion_content(
         Ok(body) => body,
         Err(err) => {
             let _ = err;
-            tracing::warn!(
-                operation,
-                "failed to read OpenAI response body"
-            );
+            tracing::warn!(operation, "failed to read OpenAI response body");
             return None;
         }
     };
@@ -122,10 +119,7 @@ pub async fn request_chat_completion_content(
         Ok(body) => body,
         Err(err) => {
             let _ = err;
-            tracing::warn!(
-                operation,
-                "failed to decode OpenAI response"
-            );
+            tracing::warn!(operation, "failed to decode OpenAI response");
             return None;
         }
     };

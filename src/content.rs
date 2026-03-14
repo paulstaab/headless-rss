@@ -106,7 +106,10 @@ pub async fn maybe_refresh_feed_content_state(
 
     tracing::info!(feed_id, "performing feed content quality check");
     let Some(sample) = select_quality_sample(entries) else {
-        tracing::info!(feed_id, "no suitable article found for content quality check");
+        tracing::info!(
+            feed_id,
+            "no suitable article found for content quality check"
+        );
         return Ok(current_state);
     };
 

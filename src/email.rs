@@ -101,10 +101,7 @@ where
     for credential in credentials {
         match fetcher(&credential) {
             Ok(raw_messages) => {
-                tracing::info!(
-                    count = raw_messages.len(),
-                    "fetched unread email messages"
-                );
+                tracing::info!(count = raw_messages.len(), "fetched unread email messages");
 
                 for raw_message in raw_messages {
                     if let Err(err) =
@@ -112,17 +109,13 @@ where
                             .await
                     {
                         let _ = err;
-                        tracing::warn!(
-                            "failed to process newsletter email"
-                        );
+                        tracing::warn!("failed to process newsletter email");
                     }
                 }
             }
             Err(err) => {
                 let _ = err;
-                tracing::warn!(
-                    "failed to fetch unread emails from mailbox"
-                );
+                tracing::warn!("failed to fetch unread emails from mailbox");
             }
         }
     }
