@@ -108,9 +108,9 @@ It combines workflow guidance with implementation-aware project conventions.
 
 ## Key API Endpoints
 - `/status` for health checks.
-- `/index.php/apps/news/api/v1-3/feeds` for Nextcloud News compatible feed operations.
-- `/index.php/apps/news/api/v1-3/folders` for folder operations.
-- `/index.php/apps/news/api/v1-3/items` for article and item operations.
+- `/index.php/apps/news/api/v{version}/feeds` for Nextcloud News compatible feed operations (supports `v1-2` and `v1-3`).
+- `/index.php/apps/news/api/v{version}/folders` for folder operations (supports `v1-2` and `v1-3`).
+- `/index.php/apps/news/api/v{version}/items` for article and item operations (supports `v1-2` and `v1-3`).
 
 ## Environment and Storage
 - `USERNAME` and `PASSWORD` are optional and enable HTTP Basic auth only when both are set.
