@@ -37,6 +37,25 @@ pub struct EnrichedArticleContent {
     pub content_hash: Option<String>,
 }
 
+/// Shared request context used when enriching article content.
+pub struct ArticleContentContext<'a> {
+    pub article_http_client: &'a Client,
+    pub config: &'a Config,
+    pub feed_id: Option<i64>,
+    pub article_id: Option<i64>,
+    pub feed_url: Option<&'a str>,
+    pub article_url: Option<&'a str>,
+}
+
+/// Shared article payload used by content extraction and summary generation.
+pub struct ArticleContentPayload {
+    pub content: Option<String>,
+    pub summary: Option<String>,
+    pub media_thumbnail: Option<String>,
+    pub use_extracted_fulltext: bool,
+    pub use_llm_summary: bool,
+}
+
 /// Extracts the first image source URL from HTML body content.
 pub fn extract_first_image_url(html_content: Option<&str>) -> Option<String> {
     let html = html_content?;
@@ -242,20 +261,26 @@ pub async fn maybe_refresh_feed_content_state(
 }
 
 /// Applies thumbnail fallback, optional full-text extraction, and optional summary generation.
-#[allow(clippy::too_many_arguments)]
 pub async fn enrich_article_content(
-    article_http_client: &Client,
-    config: &Config,
-    feed_id: Option<i64>,
-    article_id: Option<i64>,
-    feed_url: Option<&str>,
-    url: Option<&str>,
-    content: Option<String>,
-    summary: Option<String>,
-    media_thumbnail: Option<String>,
-    use_extracted_fulltext: bool,
-    use_llm_summary: bool,
+    context: ArticleContentContext<'_>,
+    payload: ArticleContentPayload,
 ) -> EnrichedArticleContent {
+    let ArticleContentContext {
+        article_http_client,
+        config,
+        feed_id,
+        article_id,
+        feed_url,
+        article_url,
+    } = context;
+    let ArticleContentPayload {
+        content,
+        summary,
+        media_thumbnail,
+        use_extracted_fulltext,
+        use_llm_summary,
+    } = payload;
+
     let mut final_content = content;
     let mut final_summary = summary;
     let mut final_media_thumbnail = media_thumbnail
@@ -263,7 +288,7 @@ pub async fn enrich_article_content(
 
     if use_extracted_fulltext
         && let Some(feed_url) = feed_url
-        && let Some(article_url) = url
+        && let Some(article_url) = article_url
         && should_extract_article_for_matching_tlds(feed_id, article_id, feed_url, article_url)
         && let Some(extracted_content) = extract_article(
             article_http_client,
@@ -749,9 +774,10 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{
-        ARTICLE_SUMMARY_SCHEMA_NAME, SUMMARY_QUALITY_SCHEMA_NAME, build_missing_summary,
-        enrich_article_content, extract_article_from_html, extract_bool_from_structured_response,
-        extract_first_image_url, extract_string_from_structured_response, extraction_tld_check,
+        ARTICLE_SUMMARY_SCHEMA_NAME, ArticleContentContext, ArticleContentPayload,
+        SUMMARY_QUALITY_SCHEMA_NAME, build_missing_summary, enrich_article_content,
+        extract_article_from_html, extract_bool_from_structured_response, extract_first_image_url,
+        extract_string_from_structured_response, extraction_tld_check,
         is_extracted_content_preferred, normalize_text, parse_llm_json_response, plain_text,
         should_enable_llm_summary_by_heuristic,
     };
@@ -992,17 +1018,21 @@ mod tests {
         };
 
         let enriched = enrich_article_content(
-            &reqwest::Client::new(),
-            &config,
-            Some(1),
-            Some(2),
-            Some("https://example.com/rss.xml"),
-            Some(article_url.as_str()),
-            Some("Feed-provided content".to_string()),
-            None,
-            None,
-            true,
-            false,
+            ArticleContentContext {
+                article_http_client: &reqwest::Client::new(),
+                config: &config,
+                feed_id: Some(1),
+                article_id: Some(2),
+                feed_url: Some("https://example.com/rss.xml"),
+                article_url: Some(article_url.as_str()),
+            },
+            ArticleContentPayload {
+                content: Some("Feed-provided content".to_string()),
+                summary: None,
+                media_thumbnail: None,
+                use_extracted_fulltext: true,
+                use_llm_summary: false,
+            },
         )
         .await;
 

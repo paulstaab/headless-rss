@@ -12,28 +12,13 @@ use super::super::AppState;
 
 /// Creates an in-memory database populated with the minimum API fixture data.
 pub(super) async fn setup_pool() -> SqlitePool {
-    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let pool = crate::db::create_memory_pool().await.unwrap();
 
-    sqlx::query(
-        "CREATE TABLE folder (id INTEGER PRIMARY KEY NOT NULL, name VARCHAR NOT NULL UNIQUE, is_root BOOLEAN DEFAULT 0 NOT NULL)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "CREATE TABLE feed (id INTEGER PRIMARY KEY NOT NULL, url VARCHAR NOT NULL UNIQUE, title VARCHAR, favicon_link VARCHAR, added INTEGER NOT NULL, next_update_time INTEGER, folder_id INTEGER NOT NULL, ordering INTEGER NOT NULL, link VARCHAR, pinned BOOLEAN NOT NULL, update_error_count INTEGER NOT NULL, last_update_error VARCHAR, is_mailing_list BOOLEAN NOT NULL DEFAULT 0, last_quality_check INTEGER, use_extracted_fulltext BOOLEAN NOT NULL DEFAULT 0, use_llm_summary BOOLEAN NOT NULL DEFAULT 0)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "CREATE TABLE article (id INTEGER PRIMARY KEY NOT NULL, title VARCHAR, content VARCHAR, author VARCHAR, content_hash VARCHAR, enclosure_link VARCHAR, enclosure_mime VARCHAR, feed_id INTEGER NOT NULL, fingerprint VARCHAR, guid VARCHAR NOT NULL, guid_hash VARCHAR NOT NULL, last_modified INTEGER NOT NULL, media_description VARCHAR, media_thumbnail VARCHAR, pub_date INTEGER, rtl BOOLEAN NOT NULL, starred BOOLEAN NOT NULL, unread BOOLEAN NOT NULL, updated_date INTEGER, url VARCHAR, summary VARCHAR)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query("INSERT INTO folder (id, name, is_root) VALUES (1, '', 1), (2, 'Tech', 0)")
+    sqlx::query("UPDATE folder SET id = 1 WHERE id = 0")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO folder (id, name, is_root) VALUES (2, 'Tech', 0)")
         .execute(&pool)
         .await
         .unwrap();

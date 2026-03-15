@@ -5,6 +5,7 @@ use std::path::Path;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
+/// Creates a SQLite pool backed by a file path and applies all migrations.
 pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::new()
         .filename(Path::new(db_path))
@@ -15,11 +16,28 @@ pub async fn create_pool(db_path: &str) -> Result<SqlitePool, sqlx::Error> {
         .connect_with(options)
         .await?;
 
-    MIGRATOR.run(&pool).await?;
-    sqlx::query("PRAGMA journal_mode=WAL")
-        .execute(&pool)
-        .await?;
+    initialize_pool(&pool, true).await?;
     Ok(pool)
+}
+
+#[cfg(test)]
+/// Creates an in-memory SQLite pool and applies the production migrations.
+pub async fn create_memory_pool() -> Result<SqlitePool, sqlx::Error> {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await?;
+
+    initialize_pool(&pool, false).await?;
+    Ok(pool)
+}
+
+async fn initialize_pool(pool: &SqlitePool, use_wal: bool) -> Result<(), sqlx::Error> {
+    MIGRATOR.run(pool).await?;
+    if use_wal {
+        sqlx::query("PRAGMA journal_mode=WAL").execute(pool).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

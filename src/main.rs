@@ -7,6 +7,7 @@ mod email;
 mod email_credentials;
 mod http_client;
 mod llm;
+mod repo;
 mod ssrf;
 mod updater;
 

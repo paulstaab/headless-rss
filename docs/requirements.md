@@ -40,7 +40,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `DEL-001`: The application shall be deliverable as a single self-hosted container image.
 
 ### Service Runtime
-- `SRV-001`: On startup, the service shall initialize persistent storage connectivity.
+- `SRV-001`: On startup, the service shall initialize persistent storage connectivity and apply schema migrations.
 - `SRV-002`: On startup, the service shall execute a feed refresh cycle.
 - `SRV-003`: Startup refresh shall process all non-mailing-list feeds regardless of previous schedule.
 - `SRV-004`: The service shall execute periodic feed refresh cycles based on `FEED_UPDATE_FREQUENCY_MIN`.

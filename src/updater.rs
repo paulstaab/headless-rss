@@ -32,6 +32,16 @@ struct FeedToUpdate {
     use_llm_summary: bool,
 }
 
+/// Shared context for ingesting entries from one feed refresh cycle.
+struct FeedEntryIngestionContext<'a> {
+    pool: &'a SqlitePool,
+    article_http_client: &'a reqwest::Client,
+    config: &'a Config,
+    feed_id: i64,
+    feed_url: &'a str,
+    content_state: FeedContentState,
+}
+
 pub async fn update_all(config: &Config) -> Result<()> {
     tracing::info!("starting rust feed update cycle");
     let pool = db::create_pool(&config.db_path)
@@ -177,20 +187,18 @@ async fn update_single_feed(
     let mut inserted = 0usize;
     let mut processed = 0usize;
     let mut current_feed_guid_hashes = Vec::new();
+    let entry_context = FeedEntryIngestionContext {
+        pool,
+        article_http_client,
+        config,
+        feed_id,
+        feed_url: &feed.url,
+        content_state,
+    };
+
     for entry in parsed.entries.iter().take(50) {
         processed += 1;
-        if insert_article_from_entry(
-            pool,
-            article_http_client,
-            config,
-            feed_id,
-            &feed.url,
-            entry,
-            &mut current_feed_guid_hashes,
-            content_state,
-        )
-        .await?
-        {
+        if insert_article_from_entry(&entry_context, entry, &mut current_feed_guid_hashes).await? {
             inserted += 1;
         }
     }
@@ -301,52 +309,41 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
     ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn insert_article_from_entry(
-    pool: &SqlitePool,
-    article_http_client: &reqwest::Client,
-    config: &Config,
-    feed_id: i64,
-    feed_url: &str,
+    entry_context: &FeedEntryIngestionContext<'_>,
     entry: &feed_rs::model::Entry,
     current_feed_guid_hashes: &mut Vec<String>,
-    content_state: FeedContentState,
 ) -> Result<bool> {
-    let Some(article) = article_store::article_record_from_feed_entry(feed_id, entry) else {
-        tracing::debug!(feed_id, "skipping entry without guid/link/title");
+    let Some(article) = article_store::article_record_from_feed_entry(entry_context.feed_id, entry)
+    else {
+        tracing::debug!(
+            feed_id = entry_context.feed_id,
+            "skipping entry without guid/link/title"
+        );
         return Ok(false);
     };
 
     current_feed_guid_hashes.push(article.guid_hash.clone());
 
-    if article_store::article_exists_by_guid_hash(pool, &article.guid_hash)
-        .await
-        .context("failed to check existing article")?
-    {
-        tracing::debug!(
-            feed_id,
-            guid_hash = article.guid_hash,
-            "skipping duplicate entry"
-        );
-        return Ok(false);
-    }
+    let ingestion_context = article_store::ArticleIngestionContext {
+        pool: entry_context.pool,
+        article_http_client: entry_context.article_http_client,
+        config: entry_context.config,
+        feed_url: Some(entry_context.feed_url),
+        content_state: entry_context.content_state,
+    };
 
-    let article = article_store::enrich_article_record(
-        article_http_client,
-        config,
-        feed_url,
-        content_state,
-        article,
-    )
-    .await;
-
-    match article_store::insert_article_if_new(pool, article)
+    match article_store::ingest_article_if_new(&ingestion_context, article)
         .await
         .context("failed to insert article")?
     {
         InsertArticleOutcome::Inserted { .. } => Ok(true),
         InsertArticleOutcome::Duplicate { guid_hash } => {
-            tracing::debug!(feed_id, guid_hash, "skipping duplicate entry");
+            tracing::debug!(
+                feed_id = entry_context.feed_id,
+                guid_hash,
+                "skipping duplicate entry"
+            );
             Ok(false)
         }
     }
