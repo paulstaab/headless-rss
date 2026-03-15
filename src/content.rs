@@ -1,5 +1,6 @@
 //! Shared content extraction and summarization helpers for Rust article ingestion.
 
+use std::net::IpAddr;
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
@@ -93,12 +94,66 @@ pub fn extract_article_from_html(html: &str, base_url: Option<&str>) -> Option<S
     Some(content.to_string())
 }
 
+/// Returns whether feed/article URLs share the same normalized host suffix.
+///
+/// For conventional domains this compares the last hostname label (the TLD).
+/// For single-label hosts and IP literals used in local testing, the full host is
+/// compared so extraction remains testable without public DNS.
+fn extraction_tld_check(feed_url: &str, article_url: &str) -> (String, String, bool) {
+    let feed_tld = normalized_host_suffix(feed_url).unwrap_or_else(|| "unknown".to_string());
+    let article_tld = normalized_host_suffix(article_url).unwrap_or_else(|| "unknown".to_string());
+    let matches = feed_tld == article_tld;
+
+    (feed_tld, article_tld, matches)
+}
+
+fn should_extract_article_for_matching_tlds(
+    feed_id: Option<i64>,
+    article_id: Option<i64>,
+    feed_url: &str,
+    article_url: &str,
+) -> bool {
+    let (feed_tld, article_tld, matches) = extraction_tld_check(feed_url, article_url);
+    if !matches {
+        tracing::warn!(
+            feed_id,
+            article_id,
+            feed_tld,
+            article_tld,
+            "skipping article extraction because feed/article TLDs do not match"
+        );
+    }
+
+    matches
+}
+
+fn normalized_host_suffix(url: &str) -> Option<String> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    let host = parsed
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if host.is_empty() {
+        return None;
+    }
+
+    if host.parse::<IpAddr>().is_ok() {
+        return Some(host);
+    }
+
+    match host.rsplit_once('.') {
+        Some((_, suffix)) if !suffix.is_empty() => Some(suffix.to_string()),
+        _ => Some(host),
+    }
+}
+
 /// Refreshes feed quality flags when the monthly evaluation window has elapsed.
 pub async fn maybe_refresh_feed_content_state(
     pool: &SqlitePool,
     article_http_client: &Client,
     config: &Config,
     feed_id: i64,
+    feed_url: &str,
     current_state: FeedContentState,
     entries: &[Entry],
 ) -> Result<FeedContentState> {
@@ -131,8 +186,13 @@ pub async fn maybe_refresh_feed_content_state(
         .map(|summary| summary.content.as_str());
     let article_url = sample.links.first().map(|link| link.href.as_str());
     let extracted_text = match article_url {
-        Some(url) => extract_article(article_http_client, config, Some(feed_id), None, url).await,
+        Some(url)
+            if should_extract_article_for_matching_tlds(Some(feed_id), None, feed_url, url) =>
+        {
+            extract_article(article_http_client, config, Some(feed_id), None, url).await
+        }
         None => None,
+        Some(_) => None,
     };
     let use_extracted_fulltext =
         is_extracted_content_preferred(extracted_text.as_deref(), feed_content);
@@ -177,6 +237,7 @@ pub async fn enrich_article_content(
     config: &Config,
     feed_id: Option<i64>,
     article_id: Option<i64>,
+    feed_url: Option<&str>,
     url: Option<&str>,
     content: Option<String>,
     summary: Option<String>,
@@ -190,7 +251,9 @@ pub async fn enrich_article_content(
         .or_else(|| extract_first_image_url(final_content.as_deref().or(final_summary.as_deref())));
 
     if use_extracted_fulltext
+        && let Some(feed_url) = feed_url
         && let Some(article_url) = url
+        && should_extract_article_for_matching_tlds(feed_id, article_id, feed_url, article_url)
         && let Some(extracted_content) = extract_article(
             article_http_client,
             config,
@@ -671,13 +734,19 @@ fn unix_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::{
         ARTICLE_SUMMARY_SCHEMA_NAME, SUMMARY_QUALITY_SCHEMA_NAME, build_missing_summary,
-        extract_article_from_html, extract_bool_from_structured_response, extract_first_image_url,
-        extract_string_from_structured_response, is_extracted_content_preferred, normalize_text,
-        parse_llm_json_response, plain_text, should_enable_llm_summary_by_heuristic,
+        enrich_article_content, extract_article_from_html, extract_bool_from_structured_response,
+        extract_first_image_url, extract_string_from_structured_response, extraction_tld_check,
+        is_extracted_content_preferred, normalize_text, parse_llm_json_response, plain_text,
+        should_enable_llm_summary_by_heuristic,
     };
+    use crate::config::Config;
     use crate::llm::openai_chat_completions_url;
+    use axum::{Router, routing::get};
 
     #[test]
     fn extract_article_from_html_returns_main_article_body() {
@@ -843,6 +912,91 @@ mod tests {
             extract_first_image_url(Some(html)).as_deref(),
             Some("https://example.com/1.jpg")
         );
+    }
+
+    #[test]
+    fn extraction_tld_check_accepts_matching_domain_suffixes() {
+        assert_eq!(
+            extraction_tld_check(
+                "https://feeds.example.com/rss.xml",
+                "https://cdn.another.com/article"
+            ),
+            ("com".to_string(), "com".to_string(), true)
+        );
+    }
+
+    #[test]
+    fn extraction_tld_check_rejects_different_domain_suffixes() {
+        assert_eq!(
+            extraction_tld_check("https://example.com/rss.xml", "https://example.org/article"),
+            ("com".to_string(), "org".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn extraction_tld_check_accepts_matching_local_hosts() {
+        assert_eq!(
+            extraction_tld_check(
+                "http://127.0.0.1:8000/feed.xml",
+                "http://127.0.0.1:9000/article"
+            ),
+            ("127.0.0.1".to_string(), "127.0.0.1".to_string(), true)
+        );
+    }
+
+    #[tokio::test]
+    async fn enrich_article_content_skips_fetch_when_tlds_do_not_match() {
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let app = Router::new().route(
+            "/article",
+            get({
+                let request_count = Arc::clone(&request_count);
+                move || {
+                    let request_count = Arc::clone(&request_count);
+                    async move {
+                        request_count.fetch_add(1, Ordering::SeqCst);
+                        "<html><body><article><p>Extracted body</p></article></body></html>"
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let article_url = format!("http://{addr}/article");
+        let config = Config {
+            username: None,
+            password: None,
+            version: "test".to_string(),
+            db_path: ":memory:".to_string(),
+            feed_update_frequency_min: 15,
+            openai_api_key: None,
+            openai_base_url: "https://api.openai.com/v1".to_string(),
+            openai_model: "gpt-5-nano".to_string(),
+            openai_timeout_seconds: 30,
+            testing_mode: true,
+        };
+
+        let enriched = enrich_article_content(
+            &reqwest::Client::new(),
+            &config,
+            Some(1),
+            Some(2),
+            Some("https://example.com/rss.xml"),
+            Some(article_url.as_str()),
+            Some("Feed-provided content".to_string()),
+            None,
+            None,
+            true,
+            false,
+        )
+        .await;
+
+        assert_eq!(request_count.load(Ordering::SeqCst), 0);
+        assert_eq!(enriched.content.as_deref(), Some("Feed-provided content"));
     }
 
     #[test]

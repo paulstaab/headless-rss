@@ -108,6 +108,7 @@ pub async fn article_exists_by_guid_hash(
 pub async fn enrich_article_record(
     article_http_client: &reqwest::Client,
     config: &Config,
+    feed_url: &str,
     content_state: FeedContentState,
     article: ArticleRecord,
 ) -> ArticleRecord {
@@ -116,6 +117,7 @@ pub async fn enrich_article_record(
         config,
         Some(article.feed_id),
         None,
+        Some(feed_url),
         article.url.as_deref(),
         article.content,
         article.summary,

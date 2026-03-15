@@ -336,6 +336,7 @@ async fn create_article_draft(
         config,
         Some(feed_id),
         None,
+        None,
         url.as_deref(),
         Some(content.to_string()),
         summary,

@@ -164,6 +164,7 @@ async fn update_single_feed(
         article_http_client,
         config,
         feed_id,
+        &feed.url,
         FeedContentState {
             last_quality_check: feed.last_quality_check,
             use_extracted_fulltext: feed.use_extracted_fulltext,
@@ -183,6 +184,7 @@ async fn update_single_feed(
             article_http_client,
             config,
             feed_id,
+            &feed.url,
             entry,
             &mut current_feed_guid_hashes,
             content_state,
@@ -299,11 +301,13 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
     ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn insert_article_from_entry(
     pool: &SqlitePool,
     article_http_client: &reqwest::Client,
     config: &Config,
     feed_id: i64,
+    feed_url: &str,
     entry: &feed_rs::model::Entry,
     current_feed_guid_hashes: &mut Vec<String>,
     content_state: FeedContentState,
@@ -327,9 +331,14 @@ async fn insert_article_from_entry(
         return Ok(false);
     }
 
-    let article =
-        article_store::enrich_article_record(article_http_client, config, content_state, article)
-            .await;
+    let article = article_store::enrich_article_record(
+        article_http_client,
+        config,
+        feed_url,
+        content_state,
+        article,
+    )
+    .await;
 
     match article_store::insert_article_if_new(pool, article)
         .await
