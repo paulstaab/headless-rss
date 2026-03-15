@@ -70,7 +70,7 @@ async fn log_user_interaction(request: Request<Body>, next: Next) -> Response {
         uri = %uri,
         status = response.status().as_u16(),
         duration_ms,
-        "user interaction handled"
+        "request"
     );
 
     response
