@@ -22,6 +22,7 @@ use crate::config::Config;
 use crate::content;
 use crate::http_client;
 use crate::llm;
+use crate::llm::LlmRequestContext;
 
 const NINETY_DAYS: i64 = 90 * 24 * 60 * 60;
 const NEWSLETTER_MAX_CHARS: usize = 5_000;
@@ -168,10 +169,11 @@ async fn process_email_message(
     };
 
     let llm_result =
-        parse_newsletter_with_llm(config, &subject, &from_address, &cleaned_content).await;
+        parse_newsletter_with_llm(config, feed_id, &subject, &from_address, &cleaned_content).await;
     let articles = build_articles_from_email(
         article_http_client,
         config,
+        feed_id,
         &subject,
         &from_address,
         &cleaned_content,
@@ -235,6 +237,7 @@ impl ArticleDraft {
 async fn build_articles_from_email(
     article_http_client: &reqwest::Client,
     config: &Config,
+    feed_id: i64,
     subject: &str,
     from_address: &str,
     content: &str,
@@ -253,6 +256,7 @@ async fn build_articles_from_email(
                     create_article_draft(
                         article_http_client,
                         config,
+                        feed_id,
                         &title,
                         from_address,
                         &item_content,
@@ -271,6 +275,7 @@ async fn build_articles_from_email(
                 create_article_draft(
                     article_http_client,
                     config,
+                    feed_id,
                     subject,
                     from_address,
                     content,
@@ -286,6 +291,7 @@ async fn build_articles_from_email(
                 create_article_draft(
                     article_http_client,
                     config,
+                    feed_id,
                     subject,
                     from_address,
                     &article_content,
@@ -300,6 +306,7 @@ async fn build_articles_from_email(
                 create_article_draft(
                     article_http_client,
                     config,
+                    feed_id,
                     subject,
                     from_address,
                     content,
@@ -313,9 +320,11 @@ async fn build_articles_from_email(
 }
 
 /// Enriches one newsletter-derived article draft with summary, content hash, and thumbnail data.
+#[allow(clippy::too_many_arguments)]
 async fn create_article_draft(
     article_http_client: &reqwest::Client,
     config: &Config,
+    feed_id: i64,
     subject: &str,
     from_address: &str,
     content: &str,
@@ -325,6 +334,8 @@ async fn create_article_draft(
     let enriched = content::enrich_article_content(
         article_http_client,
         config,
+        Some(feed_id),
+        None,
         url.as_deref(),
         Some(content.to_string()),
         summary,
@@ -588,6 +599,7 @@ fn clean_newsletter_html(html_content: &str) -> String {
 /// Requests an optional newsletter structure parse from the configured OpenAI-compatible endpoint.
 async fn parse_newsletter_with_llm(
     config: &Config,
+    feed_id: i64,
     subject: &str,
     from_address: &str,
     content: &str,
@@ -607,7 +619,11 @@ async fn parse_newsletter_with_llm(
             from_address,
             &trimmed_content,
         ),
-        "newsletter parsing",
+        LlmRequestContext {
+            task_name: "newsletter-parsing",
+            feed_id: Some(feed_id),
+            article_id: None,
+        },
     )
     .await?;
 
@@ -726,6 +742,7 @@ fn build_openai_newsletter_payload(
             "type": "json_schema",
             "json_schema": {
                 "name": "newsletter_parse",
+                "strict": true,
                 "schema": {
                     "type": "object",
                     "properties": {
@@ -966,6 +983,7 @@ mod tests {
         let articles = build_articles_from_email(
             &client,
             &cfg,
+            1,
             "Newsletter",
             "list@example.com",
             "fallback body",
@@ -992,6 +1010,7 @@ mod tests {
         let articles = build_articles_from_email(
             &client,
             &cfg,
+            1,
             "Newsletter",
             "list@example.com",
             "fallback body",

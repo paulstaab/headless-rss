@@ -311,17 +311,20 @@ async fn insert_article_from_entry(
     entry: &feed_rs::model::Entry,
     content_state: FeedContentState,
 ) -> ApiResult<()> {
-    let Some(article) = article_store::article_record_from_feed_entry(
-        article_http_client,
-        config,
-        feed_id,
-        entry,
-        content_state,
-    )
-    .await
-    else {
+    let Some(article) = article_store::article_record_from_feed_entry(feed_id, entry) else {
         return Ok(());
     };
+
+    if article_store::article_exists_by_guid_hash(pool, &article.guid_hash)
+        .await
+        .map_err(internal_error)?
+    {
+        return Ok(());
+    }
+
+    let article =
+        article_store::enrich_article_record(article_http_client, config, content_state, article)
+            .await;
 
     let _ = article_store::insert_article_if_new(pool, article)
         .await
