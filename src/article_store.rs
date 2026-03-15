@@ -191,7 +191,11 @@ pub async fn ingest_article_if_new(
     )
     .await;
 
-    insert_article_if_new(context.pool, article).await
+    repo::insert_article_record(context.pool, article.clone()).await?;
+
+    Ok(InsertArticleOutcome::Inserted {
+        guid_hash: article.guid_hash,
+    })
 }
 
 /// Returns the current unix timestamp in seconds.
