@@ -2,7 +2,26 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
+use reqwest::header::LOCATION;
 use tokio::net::lookup_host;
+
+const MAX_REDIRECTS: usize = 10;
+
+#[derive(Debug)]
+pub enum SafeGetError {
+    Validation(anyhow::Error),
+    Request(anyhow::Error),
+}
+
+impl SafeGetError {
+    /// Converts the wrapped error into an anyhow error for callers that do not
+    /// need to distinguish validation failures from transport failures.
+    pub fn into_anyhow(self) -> anyhow::Error {
+        match self {
+            Self::Validation(error) | Self::Request(error) => error,
+        }
+    }
+}
 
 /// Validates a remote URL against SSRF constraints used by feed operations.
 ///
@@ -43,6 +62,76 @@ pub async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<()>
     Ok(())
 }
 
+/// Sends a GET request while validating each redirect hop against the SSRF
+/// policy before the client follows it.
+pub async fn get_with_safe_redirects(
+    client: &reqwest::Client,
+    url: &str,
+    allow_localhost: bool,
+) -> std::result::Result<reqwest::Response, SafeGetError> {
+    validate_remote_url(url, allow_localhost)
+        .await
+        .map_err(SafeGetError::Validation)?;
+
+    let mut current_url = reqwest::Url::parse(url).map_err(|error| {
+        SafeGetError::Request(anyhow::Error::new(error).context("failed to parse request url"))
+    })?;
+
+    for redirect_count in 0..=MAX_REDIRECTS {
+        let response = client
+            .get(current_url.clone())
+            .send()
+            .await
+            .map_err(|error| SafeGetError::Request(error.into()))?;
+
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+
+        if redirect_count == MAX_REDIRECTS {
+            return Err(SafeGetError::Request(anyhow::anyhow!(
+                "stopped after {MAX_REDIRECTS} redirects"
+            )));
+        }
+
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .ok_or_else(|| {
+                SafeGetError::Request(anyhow::anyhow!("redirect response missing Location header"))
+            })?
+            .to_str()
+            .map_err(|error| {
+                SafeGetError::Request(
+                    anyhow::Error::new(error)
+                        .context("redirect Location header is not valid UTF-8"),
+                )
+            })?;
+
+        current_url = validate_redirect_target(response.url(), location, allow_localhost)
+            .await
+            .map_err(SafeGetError::Validation)?;
+    }
+
+    Err(SafeGetError::Request(anyhow::anyhow!(
+        "redirect handling terminated unexpectedly"
+    )))
+}
+
+/// Resolves a redirect target relative to the current URL and validates the
+/// resulting target before it is fetched.
+pub async fn validate_redirect_target(
+    current_url: &reqwest::Url,
+    location: &str,
+    allow_localhost: bool,
+) -> Result<reqwest::Url> {
+    let redirect_url = current_url
+        .join(location)
+        .with_context(|| format!("invalid redirect target `{location}`"))?;
+    validate_remote_url(redirect_url.as_str(), allow_localhost).await?;
+    Ok(redirect_url)
+}
+
 fn validate_ip_address(ip: IpAddr, allow_localhost: bool) -> Result<()> {
     let is_private = match ip {
         IpAddr::V4(v4) => v4.is_private(),
@@ -73,4 +162,31 @@ fn validate_ip_address(ip: IpAddr, allow_localhost: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_redirect_target;
+
+    #[tokio::test]
+    async fn validate_redirect_target_blocks_localhost_hop() {
+        let current_url = reqwest::Url::parse("https://example.com/feed.xml").unwrap();
+
+        let error = validate_redirect_target(&current_url, "http://127.0.0.1/admin", false)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), "Access to localhost is not allowed.");
+    }
+
+    #[tokio::test]
+    async fn validate_redirect_target_accepts_relative_public_hop() {
+        let current_url = reqwest::Url::parse("https://example.com/feed.xml").unwrap();
+
+        let redirect_url = validate_redirect_target(&current_url, "/next.xml", false)
+            .await
+            .unwrap();
+
+        assert_eq!(redirect_url.as_str(), "https://example.com/next.xml");
+    }
 }

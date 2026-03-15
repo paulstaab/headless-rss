@@ -146,12 +146,9 @@ async fn update_single_feed(
     let feed_id = feed.id;
     let url = feed.url.as_str();
     tracing::debug!(feed_id, testing_mode, "starting feed update");
-    ssrf::validate_remote_url(url, testing_mode).await?;
-
-    let response = feed_http_client
-        .get(url)
-        .send()
+    let response = ssrf::get_with_safe_redirects(feed_http_client, url, testing_mode)
         .await
+        .map_err(ssrf::SafeGetError::into_anyhow)
         .with_context(|| format!("request failed for {url}"))?;
     if !response.status().is_success() {
         anyhow::bail!("request failed for {url}: HTTP {}", response.status());
@@ -637,7 +634,7 @@ mod tests {
         assert!(
             err_detail
                 .unwrap_or_default()
-                .contains("Only http and https are permitted")
+                .contains("request failed for file:///etc/passwd")
         );
     }
 

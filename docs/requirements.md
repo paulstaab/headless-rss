@@ -149,7 +149,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `SEC-001`: Remote URL validation shall allow only `http` and `https` schemes.
 - `SEC-002`: Remote URL validation shall block loopback, private, link-local, unspecified, multicast, and cloud metadata addresses.
 - `SEC-003`: Localhost access may be allowed only in testing mode.
-- `SEC-004`: The same URL validation policy shall be applied consistently in all remote-fetch paths.
+- `SEC-004`: The same URL validation policy shall be applied consistently in all remote-fetch paths, including each HTTP redirect target before it is fetched.
 - `SEC-005`: HTTP Basic auth shall be enforced only when both `USERNAME` and `PASSWORD` are configured.
 - `SEC-006`: The system shall not log user-provided content, including titles, feed content, mailbox identities, or externally generated content derived from user input unless explicitly required by an `OBS` requirement.
 

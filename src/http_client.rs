@@ -27,7 +27,7 @@ pub fn build_article_http_client() -> Result<reqwest::Client> {
         .connect_timeout(Duration::from_secs(FEED_CONNECT_TIMEOUT_SECONDS))
         .read_timeout(Duration::from_secs(FEED_READ_TIMEOUT_SECONDS))
         .timeout(Duration::from_secs(FEED_REQUEST_TIMEOUT_SECONDS))
-        .redirect(reqwest::redirect::Policy::limited(10))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("failed to build article http client")
 }
@@ -57,7 +57,7 @@ pub fn build_feed_http_client() -> Result<reqwest::Client> {
         .connect_timeout(Duration::from_secs(FEED_CONNECT_TIMEOUT_SECONDS))
         .read_timeout(Duration::from_secs(FEED_READ_TIMEOUT_SECONDS))
         .timeout(Duration::from_secs(FEED_REQUEST_TIMEOUT_SECONDS))
-        .redirect(reqwest::redirect::Policy::limited(10))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("failed to build feed http client")
 }

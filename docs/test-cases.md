@@ -30,6 +30,7 @@ Source: `tests/test_feed_parsing.py`
 |---|---|---|---|
 | TC-FEED-001 | Parse Atom 0.3/1.0 and RSS variants | Add feeds from multiple fixture formats (`atom`, `rss`, GitHub Atom, feed without explicit IDs). | Feed is stored and at least one article is ingested for each fixture. |
 | TC-FEED-002 | Block dangerous URL schemes and targets | Validate unsafe URLs such as `file://`, localhost, private ranges, and metadata IPs. | URL validation rejects each unsafe URL with SSRF protection error. |
+| TC-FEED-004 | Block dangerous redirect targets | Validate redirect hops that point to localhost, private ranges, or metadata IPs. | Redirect target validation rejects each unsafe hop before the request is followed. |
 | TC-FEED-003 | Allow safe public HTTPS URL | Validate a normal public HTTPS feed URL. | URL validation succeeds without exception. |
 
 ### Feed Quality Decisioning
@@ -120,6 +121,7 @@ Source: `src/api.rs`
 | TC-RUST-010 | v1-2 feed move method contract | Call `PUT /index.php/apps/news/api/v1-2/feeds/{feed_id}/move` with `{"folderId": ...}`. | Returns `200` and updates feed folder assignment. |
 | TC-RUST-011 | v1-3 feed read method contract | Call `POST /index.php/apps/news/api/v1-3/feeds/{feed_id}/read` with `{"newestItemId": ...}`. | Returns `200` and marks matching feed items as read. |
 | TC-RUST-012 | Rust feed creation SSRF localhost block | Call `POST /index.php/apps/news/api/v1-3/feeds` with URL `http://127.0.0.1:...` when testing mode is disabled. | Returns `400` with SSRF protection error detail. |
+| TC-RUST-096 | Rust feed creation SSRF redirect block | Resolve a feed URL redirect target against a blocked localhost/private destination when testing mode is disabled. | Redirect validation rejects the blocked target before it is fetched. |
 | TC-RUST-013 | Rust folder duplicate-create conflict | Call `POST /index.php/apps/news/api/v1-3/folders` for an existing folder name. | Returns `409` with `{"detail":"Folder already exists"}`. |
 | TC-RUST-014 | Rust folder delete missing | Call `DELETE /index.php/apps/news/api/v1-3/folders/{folder_id}` for a missing folder ID. | Returns `404` with `{"detail":"Folder not found"}`. |
 | TC-RUST-015 | Rust feed duplicate-create conflict | Call `POST /index.php/apps/news/api/v1-3/feeds` for an already existing feed URL. | Returns `409` conflict. |
