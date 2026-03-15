@@ -11,7 +11,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::config::Config;
-use crate::llm;
+use crate::llm::{self, LlmRequestContext};
 use crate::ssrf;
 
 const ONE_DAY: i64 = 86_400;
@@ -139,7 +139,8 @@ pub async fn maybe_refresh_feed_content_state(
     } else {
         feed_content
     };
-    let use_llm_summary = should_enable_llm_summary(config, final_article_text, feed_summary).await;
+    let use_llm_summary =
+        should_enable_llm_summary(config, feed_id, final_article_text, feed_summary).await;
     let next_state = FeedContentState {
         last_quality_check: Some(unix_now()),
         use_extracted_fulltext,
@@ -172,6 +173,8 @@ pub async fn maybe_refresh_feed_content_state(
 pub async fn enrich_article_content(
     article_http_client: &Client,
     config: &Config,
+    feed_id: Option<i64>,
+    article_id: Option<i64>,
     url: Option<&str>,
     content: Option<String>,
     summary: Option<String>,
@@ -207,7 +210,7 @@ pub async fn enrich_article_content(
             && config.llm_enabled()
             && content_text.chars().count() >= LLM_SUMMARY_MIN_CHARS
         {
-            summarize_article_with_llm(config, content_text).await
+            summarize_article_with_llm(config, feed_id, article_id, content_text).await
         } else {
             None
         };
@@ -295,6 +298,7 @@ fn build_missing_summary(
 
 async fn should_enable_llm_summary(
     config: &Config,
+    feed_id: i64,
     final_article_text: Option<&str>,
     feed_summary: Option<&str>,
 ) -> bool {
@@ -312,7 +316,7 @@ async fn should_enable_llm_summary(
         let article_text = plain_text(final_article_text);
         let summary_text = plain_text(feed_summary);
         if let Some(is_good) =
-            is_good_standalone_summary_with_llm(config, &article_text, &summary_text).await
+            is_good_standalone_summary_with_llm(config, feed_id, &article_text, &summary_text).await
         {
             return !is_good;
         }
@@ -379,7 +383,12 @@ async fn extract_article(
 }
 
 /// Requests a structured summary for extracted article content when LLM support is enabled.
-async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Option<String> {
+async fn summarize_article_with_llm(
+    config: &Config,
+    feed_id: Option<i64>,
+    article_id: Option<i64>,
+    article_text: &str,
+) -> Option<String> {
     config.openai_api_key.as_deref()?;
 
     let plain_text = plain_text(Some(article_text));
@@ -391,7 +400,11 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
     let response_text = llm::request_chat_completion_content(
         config,
         build_openai_summary_payload(&config.openai_model, &trimmed_text),
-        "article summarization",
+        LlmRequestContext {
+            task_name: "article-summarization",
+            feed_id,
+            article_id,
+        },
     )
     .await?;
 
@@ -414,6 +427,7 @@ async fn summarize_article_with_llm(config: &Config, article_text: &str) -> Opti
 
 async fn is_good_standalone_summary_with_llm(
     config: &Config,
+    feed_id: i64,
     article_text: &str,
     summary: &str,
 ) -> Option<bool> {
@@ -428,7 +442,11 @@ async fn is_good_standalone_summary_with_llm(
     let response_text = llm::request_chat_completion_content(
         config,
         build_openai_summary_quality_payload(&config.openai_model, &article_text, &summary),
-        "summary quality evaluation",
+        LlmRequestContext {
+            task_name: "summary-quality-evaluation",
+            feed_id: Some(feed_id),
+            article_id: None,
+        },
     )
     .await?;
 

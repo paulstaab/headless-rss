@@ -79,6 +79,8 @@ pub async fn article_record_from_feed_entry(
     let enriched = content::enrich_article_content(
         article_http_client,
         config,
+        Some(feed_id),
+        None,
         url.as_deref(),
         content,
         summary,

@@ -23,6 +23,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - `DEL-*`: delivery
   - `SRV-*`: service runtime
   - `API-*`: API compatibility
+  - `OBS-*`: observability
   - `FEED-*`: feed lifecycle and refresh
   - `FOL-*`: folder behavior
   - `ITEM-*`: item/article behavior
@@ -48,6 +49,10 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `API-001`: The service shall expose health and version endpoints as defined in API contract documents.
 - `API-002`: The service shall preserve Nextcloud News API compatibility for v1-2 and v1-3 contracts.
 - `API-003`: API payload field naming shall preserve contract casing (including camelCase fields).
+
+### Observability
+- `OBS-001`: All incoming API requests shall be logged at `INFO` level with the matched route and query parameters.
+- `OBS-002`: All outbound LLM requests shall be logged at `INFO` level with the task name and, when available, the associated `feed_id` and `article_id`.
 
 ### Feed Lifecycle And Refresh
 - `FEED-001`: The system shall parse and ingest both RSS and Atom feeds.
@@ -141,7 +146,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `SEC-003`: Localhost access may be allowed only in testing mode.
 - `SEC-004`: The same URL validation policy shall be applied consistently in all remote-fetch paths.
 - `SEC-005`: HTTP Basic auth shall be enforced only when both `USERNAME` and `PASSWORD` are configured.
-- `SEC-006`: The system shall not log user-provided content, including titles, feed content, mailbox identities, or externally generated content derived from user input. Logging feed or article URLs in case of problems is allowed to simplify debugging. Logging URIs of incomming request is generally allowed.
+- `SEC-006`: The system shall not log user-provided content, including titles, feed content, mailbox identities, or externally generated content derived from user input unless explicity required by an `OBS` requirement.
 
 ### Configuration
 - `CFG-001`: Runtime configuration shall be sourced from environment variables.

@@ -8,6 +8,14 @@ use serde::Deserialize;
 
 use crate::config::Config;
 
+/// Structured metadata describing one LLM task invocation.
+#[derive(Clone, Copy, Debug)]
+pub struct LlmRequestContext {
+    pub task_name: &'static str,
+    pub feed_id: Option<i64>,
+    pub article_id: Option<i64>,
+}
+
 #[derive(Debug, Deserialize)]
 struct OpenAiChatCompletionResponse {
     choices: Vec<OpenAiChoice>,
@@ -45,7 +53,7 @@ fn format_error_chain(error: &dyn StdError) -> String {
 pub async fn request_chat_completion_content(
     config: &Config,
     payload: serde_json::Value,
-    operation: &str,
+    context: LlmRequestContext,
 ) -> Option<String> {
     let api_key = config.openai_api_key.as_deref()?;
 
@@ -57,7 +65,9 @@ pub async fn request_chat_completion_content(
         Err(err) => {
             tracing::warn!(
                 error = %format_error_chain(&err),
-                operation,
+                task_name = context.task_name,
+                feed_id = context.feed_id,
+                article_id = context.article_id,
                 "failed to build OpenAI client"
             );
             return None;
@@ -65,6 +75,14 @@ pub async fn request_chat_completion_content(
     };
 
     let request_url = openai_chat_completions_url(&config.openai_base_url);
+
+    tracing::info!(
+        task_name = context.task_name,
+        feed_id = context.feed_id,
+        article_id = context.article_id,
+        timeout_seconds = config.openai_timeout_seconds,
+        "starting LLM request"
+    );
 
     let response = match client
         .post(&request_url)
@@ -80,7 +98,9 @@ pub async fn request_chat_completion_content(
                 is_connect = err.is_connect(),
                 is_request = err.is_request(),
                 timeout_seconds = config.openai_timeout_seconds,
-                operation,
+                task_name = context.task_name,
+                feed_id = context.feed_id,
+                article_id = context.article_id,
                 "OpenAI request failed"
             );
             return None;
@@ -93,14 +113,18 @@ pub async fn request_chat_completion_content(
             let _ = err;
             tracing::warn!(
                 status = %status,
-                operation,
+                task_name = context.task_name,
+                feed_id = context.feed_id,
+                article_id = context.article_id,
                 "failed to read OpenAI error response body"
             );
         }
 
         tracing::warn!(
             status = %status,
-            operation,
+            task_name = context.task_name,
+            feed_id = context.feed_id,
+            article_id = context.article_id,
             "OpenAI request returned non-success status"
         );
         return None;
@@ -110,7 +134,12 @@ pub async fn request_chat_completion_content(
         Ok(body) => body,
         Err(err) => {
             let _ = err;
-            tracing::warn!(operation, "failed to read OpenAI response body");
+            tracing::warn!(
+                task_name = context.task_name,
+                feed_id = context.feed_id,
+                article_id = context.article_id,
+                "failed to read OpenAI response body"
+            );
             return None;
         }
     };
@@ -119,10 +148,22 @@ pub async fn request_chat_completion_content(
         Ok(body) => body,
         Err(err) => {
             let _ = err;
-            tracing::warn!(operation, "failed to decode OpenAI response");
+            tracing::warn!(
+                task_name = context.task_name,
+                feed_id = context.feed_id,
+                article_id = context.article_id,
+                "failed to decode OpenAI response"
+            );
             return None;
         }
     };
+
+    tracing::info!(
+        task_name = context.task_name,
+        feed_id = context.feed_id,
+        article_id = context.article_id,
+        "LLM request completed"
+    );
 
     body.choices
         .first()
@@ -137,7 +178,7 @@ mod tests {
     use std::error::Error as StdError;
     use std::fmt;
 
-    use super::{format_error_chain, openai_chat_completions_url};
+    use super::{LlmRequestContext, format_error_chain, openai_chat_completions_url};
 
     #[derive(Debug)]
     struct TestError {
@@ -184,5 +225,18 @@ mod tests {
             format_error_chain(&error),
             "top-level: mid-level: root-cause"
         );
+    }
+
+    #[test]
+    fn llm_request_context_carries_identifiers() {
+        let context = LlmRequestContext {
+            task_name: "article-summarization",
+            feed_id: Some(12),
+            article_id: Some(34),
+        };
+
+        assert_eq!(context.task_name, "article-summarization");
+        assert_eq!(context.feed_id, Some(12));
+        assert_eq!(context.article_id, Some(34));
     }
 }
