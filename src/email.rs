@@ -306,15 +306,15 @@ async fn find_or_create_mailing_list_feed(
     from_address: &str,
     feed_title: &str,
 ) -> Result<i64> {
-    let existing = repo::feed_exists_by_url(pool, from_address)
-        .await
-        .context("failed to query mailing-list feed")?;
-    if existing {
-        let feed_id: i64 = sqlx::query_scalar("SELECT id FROM feed WHERE url = ? LIMIT 1")
-            .bind(from_address)
-            .fetch_one(pool)
-            .await
-            .context("failed to load mailing-list feed id")?;
+    let existing_id: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM feed WHERE url = ? LIMIT 1",
+    )
+    .bind(from_address)
+    .fetch_optional(pool)
+    .await
+    .context("failed to query mailing-list feed")?;
+
+    if let Some(feed_id) = existing_id {
         return Ok(feed_id);
     }
 
