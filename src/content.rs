@@ -100,9 +100,18 @@ pub fn extract_article_from_html(html: &str, base_url: Option<&str>) -> Option<S
 /// For single-label hosts and IP literals used in local testing, the full host is
 /// compared so extraction remains testable without public DNS.
 fn extraction_tld_check(feed_url: &str, article_url: &str) -> (String, String, bool) {
-    let feed_tld = normalized_host_suffix(feed_url).unwrap_or_else(|| "unknown".to_string());
-    let article_tld = normalized_host_suffix(article_url).unwrap_or_else(|| "unknown".to_string());
-    let matches = feed_tld == article_tld;
+    let feed_tld_opt = normalized_host_suffix(feed_url);
+    let article_tld_opt = normalized_host_suffix(article_url);
+
+    // Only treat URLs as matching when both suffixes were successfully extracted
+    // and are equal. Any parsing/host-extraction failure is a non-match.
+    let matches = match (&feed_tld_opt, &article_tld_opt) {
+        (Some(feed_tld), Some(article_tld)) => feed_tld == article_tld,
+        _ => false,
+    };
+
+    let feed_tld = feed_tld_opt.unwrap_or_else(|| "unknown".to_string());
+    let article_tld = article_tld_opt.unwrap_or_else(|| "unknown".to_string());
 
     (feed_tld, article_tld, matches)
 }
@@ -118,9 +127,11 @@ fn should_extract_article_for_matching_tlds(
         tracing::warn!(
             feed_id,
             article_id,
+            feed_url,
+            article_url,
             feed_tld,
             article_tld,
-            "skipping article extraction because feed/article TLDs do not match"
+            "skipping article extraction because feed/article TLDs do not match or could not be parsed"
         );
     }
 
