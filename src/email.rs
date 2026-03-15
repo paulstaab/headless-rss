@@ -742,6 +742,7 @@ fn build_openai_newsletter_payload(
             "type": "json_schema",
             "json_schema": {
                 "name": "newsletter_parse",
+                "strict": true,
                 "schema": {
                     "type": "object",
                     "properties": {

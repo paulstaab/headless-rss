@@ -7,7 +7,7 @@ use feed_rs::model::Entry;
 use readability_js::Readability;
 use regex::Regex;
 use reqwest::Client;
-use serde_json::json;
+use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 use crate::config::Config;
@@ -18,6 +18,8 @@ const ONE_DAY: i64 = 86_400;
 const ONE_MONTH: i64 = 30 * ONE_DAY;
 const ARTICLE_MAX_CHARS: usize = 8_000;
 const LLM_SUMMARY_MIN_CHARS: usize = 160;
+const ARTICLE_SUMMARY_SCHEMA_NAME: &str = "article_summary";
+const SUMMARY_QUALITY_SCHEMA_NAME: &str = "summary_quality";
 
 #[derive(Clone, Copy, Debug)]
 pub struct FeedContentState {
@@ -408,19 +410,12 @@ async fn summarize_article_with_llm(
     )
     .await?;
 
-    let parsed: serde_json::Value = match serde_json::from_str(&response_text) {
-        Ok(parsed) => parsed,
-        Err(err) => {
-            tracing::warn!(error = %err, "llm summary response was not valid JSON");
-            return None;
-        }
-    };
-
-    let summary = parsed
-        .get("summary")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|summary| !summary.is_empty())?;
+    let parsed = parse_llm_json_response(&response_text, "llm summary")?;
+    let summary = extract_string_from_structured_response(
+        &parsed,
+        "summary",
+        &[ARTICLE_SUMMARY_SCHEMA_NAME],
+    )?;
 
     Some(format!("{summary} (AI generated)"))
 }
@@ -450,15 +445,80 @@ async fn is_good_standalone_summary_with_llm(
     )
     .await?;
 
-    let parsed: serde_json::Value = match serde_json::from_str(&response_text) {
-        Ok(parsed) => parsed,
-        Err(err) => {
-            tracing::warn!(error = %err, "summary quality response was not valid JSON");
-            return None;
-        }
-    };
+    let parsed = parse_llm_json_response(&response_text, "summary quality")?;
 
-    parsed.get("is_good").and_then(|value| value.as_bool())
+    extract_bool_from_structured_response(&parsed, "is_good", &[SUMMARY_QUALITY_SCHEMA_NAME])
+}
+
+fn parse_llm_json_response(response_text: &str, response_kind: &str) -> Option<Value> {
+    match serde_json::from_str(response_text) {
+        Ok(parsed) => Some(parsed),
+        Err(err) => {
+            tracing::warn!(error = %err, response_kind, "structured LLM response was not valid JSON");
+            None
+        }
+    }
+}
+
+fn extract_string_from_structured_response(
+    parsed: &Value,
+    field_name: &str,
+    wrapper_keys: &[&str],
+) -> Option<String> {
+    if let Some(value) = parsed
+        .get(field_name)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(value.to_string());
+    }
+
+    for wrapper_key in wrapper_keys {
+        if let Some(value) = parsed
+            .get(wrapper_key)
+            .and_then(|value| value.get(field_name))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            tracing::warn!(
+                wrapper_key,
+                field_name,
+                "unwrapped structured LLM response field"
+            );
+            return Some(value.to_string());
+        }
+    }
+
+    None
+}
+
+fn extract_bool_from_structured_response(
+    parsed: &Value,
+    field_name: &str,
+    wrapper_keys: &[&str],
+) -> Option<bool> {
+    if let Some(value) = parsed.get(field_name).and_then(|value| value.as_bool()) {
+        return Some(value);
+    }
+
+    for wrapper_key in wrapper_keys {
+        if let Some(value) = parsed
+            .get(wrapper_key)
+            .and_then(|value| value.get(field_name))
+            .and_then(|value| value.as_bool())
+        {
+            tracing::warn!(
+                wrapper_key,
+                field_name,
+                "unwrapped structured LLM response field"
+            );
+            return Some(value);
+        }
+    }
+
+    None
 }
 
 /// Builds the structured-output payload used for article summarization requests.
@@ -468,7 +528,7 @@ fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::
         "messages": [
             {
                 "role": "system",
-                "content": "Summarize the article clearly and concisely. Return 3-6 sentences, no bullets, no headings, plain text only."
+                "content": "Summarize the article clearly and concisely. Return 3-6 sentences, no bullets, no headings, plain text only. Return exactly one JSON object with a top-level `summary` field and no wrapper object."
             },
             {
                 "role": "user",
@@ -478,7 +538,8 @@ fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::
         "response_format": {
             "type": "json_schema",
             "json_schema": {
-                "name": "article_summary",
+                "name": ARTICLE_SUMMARY_SCHEMA_NAME,
+                "strict": true,
                 "schema": {
                     "type": "object",
                     "properties": {
@@ -502,7 +563,7 @@ fn build_openai_summary_quality_payload(
         "messages": [
             {
                 "role": "system",
-                "content": "You are evaluating whether a summary is a good standalone summary of an article. Answer with is_good=true if it captures the main points and is not just a lead-in."
+                "content": "You are evaluating whether a summary is a good standalone summary of an article. Return exactly one JSON object with a top-level `is_good` boolean field and no wrapper object. Set is_good=true if it captures the main points and is not just a lead-in."
             },
             {
                 "role": "user",
@@ -512,7 +573,8 @@ fn build_openai_summary_quality_payload(
         "response_format": {
             "type": "json_schema",
             "json_schema": {
-                "name": "summary_quality",
+                "name": SUMMARY_QUALITY_SCHEMA_NAME,
+                "strict": true,
                 "schema": {
                     "type": "object",
                     "properties": {
@@ -566,9 +628,10 @@ fn unix_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_missing_summary, extract_article_from_html, extract_first_image_url,
-        is_extracted_content_preferred, normalize_text, plain_text,
-        should_enable_llm_summary_by_heuristic,
+        ARTICLE_SUMMARY_SCHEMA_NAME, SUMMARY_QUALITY_SCHEMA_NAME, build_missing_summary,
+        extract_article_from_html, extract_bool_from_structured_response, extract_first_image_url,
+        extract_string_from_structured_response, is_extracted_content_preferred, normalize_text,
+        parse_llm_json_response, plain_text, should_enable_llm_summary_by_heuristic,
     };
     use crate::llm::openai_chat_completions_url;
 
@@ -646,6 +709,57 @@ mod tests {
         let content = "a".repeat(200);
         let summary = build_missing_summary(&content, true, true, None).expect("expected summary");
         assert_eq!(summary, format!("{}...", "a".repeat(160)));
+    }
+
+    #[test]
+    fn structured_summary_response_accepts_top_level_summary() {
+        let parsed = parse_llm_json_response(r#"{"summary":"Top-level summary."}"#, "llm summary")
+            .expect("expected parsed response");
+
+        assert_eq!(
+            extract_string_from_structured_response(
+                &parsed,
+                "summary",
+                &[ARTICLE_SUMMARY_SCHEMA_NAME]
+            )
+            .as_deref(),
+            Some("Top-level summary.")
+        );
+    }
+
+    #[test]
+    fn structured_summary_response_accepts_schema_wrapped_summary() {
+        let parsed = parse_llm_json_response(
+            r#"{"article_summary":{"summary":"Wrapped summary."}}"#,
+            "llm summary",
+        )
+        .expect("expected parsed response");
+
+        assert_eq!(
+            extract_string_from_structured_response(
+                &parsed,
+                "summary",
+                &[ARTICLE_SUMMARY_SCHEMA_NAME]
+            )
+            .as_deref(),
+            Some("Wrapped summary.")
+        );
+    }
+
+    #[test]
+    fn structured_summary_quality_response_accepts_schema_wrapper() {
+        let parsed =
+            parse_llm_json_response(r#"{"summary_quality":{"is_good":true}}"#, "summary quality")
+                .expect("expected parsed response");
+
+        assert_eq!(
+            extract_bool_from_structured_response(
+                &parsed,
+                "is_good",
+                &[SUMMARY_QUALITY_SCHEMA_NAME]
+            ),
+            Some(true)
+        );
     }
 
     #[test]

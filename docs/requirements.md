@@ -111,9 +111,10 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - shall be enabled only when LLM support is configured and LLM summarization is enabled for the articles feed,
   - shall strip HTML from article content before sending it to the model,
   - shall truncate article text to the first 8000 characters before LLM summarization,
-  - shall request a concise plain-text summary in structured JSON form.
+  - shall request a concise plain-text summary in structured JSON form with a top-level `summary` field.
 - `CNT-006`: Successful LLM-generated summaries shall:
   - be accepted only when a non-empty `summary` value is returned,
+  - accept equivalent provider responses that wrap `summary` under the configured structured-output schema name,
   - include the suffix ` (AI generated)`.
 - `CNT-007`: Automatic summary generation for articles without an existing summary:
   - shall run only for new articles before they are inserted into the database,
