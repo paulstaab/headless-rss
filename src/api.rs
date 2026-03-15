@@ -22,6 +22,10 @@ mod feeds;
 mod folders;
 mod items;
 
+/// Shared application state injected into every API handler.
+///
+/// Separate feed and article HTTP clients are kept here so handlers and background
+/// work can reuse the same client configuration without rebuilding clients per request.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
@@ -40,6 +44,7 @@ struct VersionOut {
     version: String,
 }
 
+/// Supported Nextcloud News compatibility variants exposed by this service.
 #[derive(Clone, Copy)]
 enum ApiVersion {
     V1_2,
@@ -60,7 +65,8 @@ pub fn app(state: AppState) -> Router {
         .layer(CorsLayer::permissive())
 }
 
-/// Builds one protected Nextcloud-compatible router, varying only the version-specific routes.
+/// Builds one protected Nextcloud-compatible router, varying only the method/path differences
+/// between `v1-2` and `v1-3`.
 fn protected_router(config_for_middleware: Arc<Config>, version: ApiVersion) -> Router<AppState> {
     let router = Router::new()
         .route("/feeds", get(feeds::get_feeds))

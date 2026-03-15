@@ -37,6 +37,9 @@ pub enum InsertArticleOutcome {
 }
 
 /// Shared context for enriching and persisting a candidate article.
+///
+/// The feed URL is optional so newsletter ingestion can reuse the same pipeline without
+/// pretending that IMAP-derived items came from a fetchable feed origin.
 pub struct ArticleIngestionContext<'a> {
     pub pool: &'a SqlitePool,
     pub article_http_client: &'a reqwest::Client,

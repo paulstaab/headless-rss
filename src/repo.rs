@@ -6,21 +6,28 @@ use crate::article_store::ArticleRecord;
 
 /// Row-deletion counts returned by cascading feed cleanup operations.
 pub struct FeedDeleteCounts {
+    /// Number of article rows deleted before the feed row was removed.
     pub deleted_articles: u64,
+    /// Number of feed rows removed for the requested identifier.
     pub deleted_feeds: u64,
 }
 
 /// Row-deletion counts returned by cascading folder cleanup operations.
 pub struct FolderDeleteCounts {
+    /// Number of article rows deleted from feeds that belonged to the folder.
     pub deleted_articles: u64,
+    /// Number of feed rows deleted from the folder.
     pub deleted_feeds: u64,
+    /// Number of folder rows deleted for the requested identifier.
     pub deleted_folders: u64,
 }
 
 /// Logical article flag fields supported by bulk mutations.
 #[derive(Clone, Copy)]
 pub enum ArticleFlag {
+    /// Read/unread state used by item read tracking.
     Unread,
+    /// Starred state used by item bookmarking.
     Starred,
 }
 

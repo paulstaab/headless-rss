@@ -1,3 +1,5 @@
+//! Database pool initialization and migration helpers.
+
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -32,6 +34,7 @@ pub async fn create_memory_pool() -> Result<SqlitePool, sqlx::Error> {
     Ok(pool)
 }
 
+/// Applies migrations to a newly created pool and enables WAL when requested.
 async fn initialize_pool(pool: &SqlitePool, use_wal: bool) -> Result<(), sqlx::Error> {
     MIGRATOR.run(pool).await?;
     if use_wal {

@@ -1,3 +1,5 @@
+//! Scheduled feed refresh logic, dynamic cadence calculation, and stale-article cleanup.
+
 use anyhow::{Context, Result};
 use rand::RngExt;
 use sqlx::{FromRow, SqlitePool};
@@ -23,6 +25,7 @@ const ONE_DAY: i64 = 86_400;
 /// Retention window for stale feed-article cleanup.
 const NINETY_DAYS: i64 = 90 * ONE_DAY;
 
+/// Projection of the feed metadata needed to decide whether and how a feed should be refreshed.
 #[derive(FromRow)]
 struct FeedToUpdate {
     id: i64,
@@ -42,6 +45,7 @@ struct FeedEntryIngestionContext<'a> {
     content_state: FeedContentState,
 }
 
+/// Runs one foreground update cycle for the CLI `update` command.
 pub async fn update_all(config: &Config) -> Result<()> {
     tracing::info!("starting rust feed update cycle");
     let pool = db::create_pool(&config.db_path)
@@ -52,6 +56,7 @@ pub async fn update_all(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Refreshes only feeds whose `next_update_time` is due.
 pub async fn update_due_feeds(
     pool: &SqlitePool,
     config: &Config,
@@ -69,6 +74,7 @@ pub async fn update_due_feeds(
     update_feed_batch(pool, config, testing_mode, feeds, "due").await
 }
 
+/// Forces refresh of all non-mailing-list feeds, ignoring the stored schedule.
 pub async fn update_all_regular_feeds(
     pool: &SqlitePool,
     config: &Config,
@@ -85,6 +91,7 @@ pub async fn update_all_regular_feeds(
     update_feed_batch(pool, config, testing_mode, feeds, "all").await
 }
 
+/// Updates a selected batch of feeds and then runs newsletter ingestion/cleanup.
 async fn update_feed_batch(
     pool: &SqlitePool,
     config: &Config,
@@ -145,6 +152,7 @@ async fn update_feed_batch(
     Ok(feeds.len())
 }
 
+/// Refreshes one feed, ingests up to 50 entries, updates dynamic cadence, and clears error state.
 async fn update_single_feed(
     pool: &SqlitePool,
     feed_http_client: &reqwest::Client,
@@ -228,6 +236,10 @@ async fn update_single_feed(
     Ok(())
 }
 
+/// Removes stale feed articles that are no longer present in the latest payload.
+///
+/// Articles are only eligible when they are old, read, and unstarred so refreshes do not
+/// delete recent unread content or user-saved items.
 async fn cleanup_stale_feed_articles(
     pool: &SqlitePool,
     feed_id: i64,
@@ -264,6 +276,7 @@ async fn cleanup_stale_feed_articles(
     Ok(result.rows_affected())
 }
 
+/// Calculates the next refresh timestamp from the last 7 days of observed article output.
 async fn calculate_next_update_time(pool: &SqlitePool, feed_id: i64, now_ts: i64) -> Result<i64> {
     // Derive cadence from recent output over the last 7 days.
     let weekly_count: i64 =
@@ -309,6 +322,7 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
     ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
 }
 
+/// Converts one parsed feed entry into a persisted article when it is not a duplicate.
 async fn insert_article_from_entry(
     entry_context: &FeedEntryIngestionContext<'_>,
     entry: &feed_rs::model::Entry,

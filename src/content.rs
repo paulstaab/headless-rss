@@ -22,6 +22,7 @@ const LLM_SUMMARY_MIN_CHARS: usize = 160;
 const ARTICLE_SUMMARY_SCHEMA_NAME: &str = "article_summary";
 const SUMMARY_QUALITY_SCHEMA_NAME: &str = "summary_quality";
 
+/// Persisted feed-level content-quality flags reused while ingesting new feed entries.
 #[derive(Clone, Copy, Debug)]
 pub struct FeedContentState {
     pub last_quality_check: Option<i64>,
@@ -29,6 +30,7 @@ pub struct FeedContentState {
     pub use_llm_summary: bool,
 }
 
+/// Final article content chosen after optional extraction, summary generation, and thumbnail fallback.
 #[derive(Debug)]
 pub struct EnrichedArticleContent {
     pub content: Option<String>,
@@ -38,6 +40,9 @@ pub struct EnrichedArticleContent {
 }
 
 /// Shared request context used when enriching article content.
+///
+/// This keeps feed/article identifiers and URL context grouped together so callers do not have
+/// to thread a long list of positional parameters through the ingestion pipeline.
 pub struct ArticleContentContext<'a> {
     pub article_http_client: &'a Client,
     pub config: &'a Config,
@@ -48,6 +53,8 @@ pub struct ArticleContentContext<'a> {
 }
 
 /// Shared article payload used by content extraction and summary generation.
+///
+/// The payload represents the mutable parts of an article that enrichment may replace or derive.
 pub struct ArticleContentPayload {
     pub content: Option<String>,
     pub summary: Option<String>,
