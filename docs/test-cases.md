@@ -30,8 +30,8 @@ Source: `tests/test_feed_parsing.py`
 |---|---|---|---|
 | TC-FEED-001 | Parse Atom 0.3/1.0 and RSS variants | Add feeds from multiple fixture formats (`atom`, `rss`, GitHub Atom, feed without explicit IDs). | Feed is stored and at least one article is ingested for each fixture. |
 | TC-FEED-002 | Block dangerous URL schemes and targets | Validate unsafe URLs such as `file://`, localhost, private ranges, and metadata IPs. | URL validation rejects each unsafe URL with SSRF protection error. |
-| TC-FEED-004 | Block dangerous redirect targets | Validate redirect hops that point to localhost, private ranges, or metadata IPs. | Redirect target validation rejects each unsafe hop before the request is followed. |
 | TC-FEED-003 | Allow safe public HTTPS URL | Validate a normal public HTTPS feed URL. | URL validation succeeds without exception. |
+| TC-FEED-004 | Block dangerous redirect targets | Validate redirect hops that point to localhost, private ranges, or metadata IPs. | Redirect target validation rejects each unsafe hop before the request is followed. |
 
 ### Feed Quality Decisioning
 Source: `tests/test_feed_quality.py`
