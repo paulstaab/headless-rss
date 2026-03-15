@@ -1,9 +1,10 @@
 {
 	"name": "headless-rss",
-	"image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
+	"image": "mcr.microsoft.com/devcontainers/rust:2-1-trixie",
 	"features": {
 		"ghcr.io/devcontainers/features/python:1": {},
-		"ghcr.io/rails/devcontainer/features/sqlite3:latest": {}
+		"ghcr.io/rails/devcontainer/features/sqlite3:latest": {},
+		"ghcr.io/jsburckhardt/devcontainer-features/codex:1": {}
 	},
 	"customizations": {
 		"vscode": {
