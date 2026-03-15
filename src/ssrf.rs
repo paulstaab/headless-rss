@@ -29,7 +29,7 @@ impl SafeGetError {
 /// - Only `http` and `https` schemes are allowed.
 /// - Loopback/private/link-local/unspecified/multicast/metadata targets are blocked.
 /// - `localhost` is only allowed in testing mode.
-pub async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<()> {
+pub async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<reqwest::Url> {
     let parsed = reqwest::Url::parse(url)
         .with_context(|| "URL scheme '' is not allowed. Only http and https are permitted.")?;
 
@@ -59,7 +59,7 @@ pub async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<()>
         }
     }
 
-    Ok(())
+    Ok(parsed)
 }
 
 /// Sends a GET request while validating each redirect hop against the SSRF
@@ -69,13 +69,9 @@ pub async fn get_with_safe_redirects(
     url: &str,
     allow_localhost: bool,
 ) -> std::result::Result<reqwest::Response, SafeGetError> {
-    validate_remote_url(url, allow_localhost)
+    let mut current_url = validate_remote_url(url, allow_localhost)
         .await
         .map_err(SafeGetError::Validation)?;
-
-    let mut current_url = reqwest::Url::parse(url).map_err(|error| {
-        SafeGetError::Request(anyhow::Error::new(error).context("failed to parse request url"))
-    })?;
 
     for redirect_count in 0..=MAX_REDIRECTS {
         let response = client
