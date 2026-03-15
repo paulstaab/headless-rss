@@ -32,6 +32,7 @@ Source: `tests/test_feed_parsing.py`
 | TC-FEED-002 | Block dangerous URL schemes and targets | Validate unsafe URLs such as `file://`, localhost, private ranges, and metadata IPs. | URL validation rejects each unsafe URL with SSRF protection error. |
 | TC-FEED-003 | Allow safe public HTTPS URL | Validate a normal public HTTPS feed URL. | URL validation succeeds without exception. |
 | TC-FEED-004 | Block dangerous redirect targets | Validate redirect hops that point to localhost, private ranges, or metadata IPs. | Redirect target validation rejects each unsafe hop before the request is followed. |
+| TC-FEED-005 | Fail closed on DNS resolution errors | Validate a hostname-based URL whose DNS lookup fails during SSRF checks. | URL validation rejects the request instead of bypassing address validation. |
 
 ### Feed Quality Decisioning
 Source: `tests/test_feed_quality.py`

@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use reqwest::header::LOCATION;
 use tokio::net::lookup_host;
 
-const MAX_REDIRECTS: usize = 10;
+const MAX_REDIRECTS: usize = 3;
 
 #[derive(Debug)]
 pub enum SafeGetError {
@@ -50,13 +50,18 @@ pub async fn validate_remote_url(url: &str, allow_localhost: bool) -> Result<req
 
     if let Ok(ip) = IpAddr::from_str(hostname) {
         validate_ip_address(ip, allow_localhost)?;
+        return Ok(parsed);
     }
 
     let lookup_port = parsed.port_or_known_default().unwrap_or(80);
-    if let Ok(addrs) = lookup_host((hostname, lookup_port)).await {
-        for addr in addrs {
-            validate_ip_address(addr.ip(), allow_localhost)?;
-        }
+    let addrs = lookup_host((hostname, lookup_port))
+        .await
+        .with_context(|| {
+            format!("failed to resolve hostname `{hostname}` during SSRF validation")
+        })?;
+
+    for addr in addrs {
+        validate_ip_address(addr.ip(), allow_localhost)?;
     }
 
     Ok(parsed)
@@ -172,7 +177,20 @@ fn validate_ip_address(ip: IpAddr, allow_localhost: bool) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_redirect_target;
+    use super::{validate_redirect_target, validate_remote_url};
+
+    #[tokio::test]
+    async fn validate_remote_url_rejects_hostname_when_dns_lookup_fails() {
+        let error = validate_remote_url("https://nonexistent.invalid/feed.xml", false)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains(
+                "failed to resolve hostname `nonexistent.invalid` during SSRF validation"
+            )
+        );
+    }
 
     #[tokio::test]
     async fn validate_redirect_target_blocks_localhost_hop() {
