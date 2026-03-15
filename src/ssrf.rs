@@ -84,7 +84,17 @@ pub async fn get_with_safe_redirects(
             .await
             .map_err(|error| SafeGetError::Request(error.into()))?;
 
-        if !response.status().is_redirection() {
+        let status = response.status();
+        let is_follow_redirect = matches!(
+            status,
+            reqwest::StatusCode::MOVED_PERMANENTLY
+                | reqwest::StatusCode::FOUND
+                | reqwest::StatusCode::SEE_OTHER
+                | reqwest::StatusCode::TEMPORARY_REDIRECT
+                | reqwest::StatusCode::PERMANENT_REDIRECT
+        );
+
+        if !is_follow_redirect {
             return Ok(response);
         }
 
