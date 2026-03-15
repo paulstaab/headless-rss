@@ -131,7 +131,7 @@ pub async fn maybe_refresh_feed_content_state(
         .map(|summary| summary.content.as_str());
     let article_url = sample.links.first().map(|link| link.href.as_str());
     let extracted_text = match article_url {
-        Some(url) => extract_article(article_http_client, config, url).await,
+        Some(url) => extract_article(article_http_client, config, Some(feed_id), None, url).await,
         None => None,
     };
     let use_extracted_fulltext =
@@ -191,8 +191,14 @@ pub async fn enrich_article_content(
 
     if use_extracted_fulltext
         && let Some(article_url) = url
-        && let Some(extracted_content) =
-            extract_article(article_http_client, config, article_url).await
+        && let Some(extracted_content) = extract_article(
+            article_http_client,
+            config,
+            feed_id,
+            article_id,
+            article_url,
+        )
+        .await
     {
         final_content = Some(extracted_content);
         if final_media_thumbnail.is_none() {
@@ -345,41 +351,79 @@ fn should_enable_llm_summary_by_heuristic(
         && normalized_article_text.starts_with(&normalized_summary)
 }
 
-/// Fetches a remote article document and extracts cleaned main-content HTML.
+/// Fetches a remote article document, logs the extraction request, and extracts cleaned main-content HTML.
 async fn extract_article(
     article_http_client: &Client,
     config: &Config,
+    feed_id: Option<i64>,
+    article_id: Option<i64>,
     url: &str,
 ) -> Option<String> {
+    tracing::info!(
+        feed_id,
+        article_id,
+        loaded_url = url,
+        "starting article extraction"
+    );
+
     if let Err(err) = ssrf::validate_remote_url(url, config.testing_mode).await {
-        tracing::warn!(url, error = %err, "blocked article url for extraction");
+        tracing::warn!(
+            feed_id,
+            article_id,
+            loaded_url = url,
+            error = %err,
+            "blocked article url for extraction"
+        );
         return None;
     }
 
     let response = match article_http_client.get(url).send().await {
         Ok(response) => response,
         Err(err) => {
-            tracing::warn!(url, error = %err, "failed to fetch article url for extraction");
+            tracing::warn!(
+                feed_id,
+                article_id,
+                loaded_url = url,
+                error = %err,
+                "failed to fetch article url for extraction"
+            );
             return None;
         }
     };
 
     if !response.status().is_success() {
-        tracing::warn!(url, status = %response.status(), "article extraction fetch returned non-success status");
+        tracing::warn!(
+            feed_id,
+            article_id,
+            loaded_url = url,
+            status = %response.status(),
+            "article extraction fetch returned non-success status"
+        );
         return None;
     }
 
     let html = match response.text().await {
         Ok(html) => html,
         Err(err) => {
-            tracing::warn!(url, error = %err, "failed to read article response body");
+            tracing::warn!(
+                feed_id,
+                article_id,
+                loaded_url = url,
+                error = %err,
+                "failed to read article response body"
+            );
             return None;
         }
     };
 
     let extracted = extract_article_from_html(&html, Some(url));
     if extracted.is_none() {
-        tracing::warn!(url, "article extraction produced empty content");
+        tracing::warn!(
+            feed_id,
+            article_id,
+            loaded_url = url,
+            "article extraction produced empty content"
+        );
     }
     extracted
 }
