@@ -366,30 +366,30 @@ async fn extract_article(
         "starting article extraction"
     );
 
-    if let Err(err) = ssrf::validate_remote_url(url, config.testing_mode).await {
-        tracing::warn!(
-            feed_id,
-            article_id,
-            loaded_url = url,
-            error = %err,
-            "blocked article url for extraction"
-        );
-        return None;
-    }
-
-    let response = match article_http_client.get(url).send().await {
-        Ok(response) => response,
-        Err(err) => {
-            tracing::warn!(
-                feed_id,
-                article_id,
-                loaded_url = url,
-                error = %err,
-                "failed to fetch article url for extraction"
-            );
-            return None;
-        }
-    };
+    let response =
+        match ssrf::get_with_safe_redirects(article_http_client, url, config.testing_mode).await {
+            Ok(response) => response,
+            Err(ssrf::SafeGetError::Validation(err)) => {
+                tracing::warn!(
+                    feed_id,
+                    article_id,
+                    loaded_url = url,
+                    error = %err,
+                    "blocked article url for extraction"
+                );
+                return None;
+            }
+            Err(ssrf::SafeGetError::Request(err)) => {
+                tracing::warn!(
+                    feed_id,
+                    article_id,
+                    loaded_url = url,
+                    error = %err,
+                    "failed to fetch article url for extraction"
+                );
+                return None;
+            }
+        };
 
     if !response.status().is_success() {
         tracing::warn!(

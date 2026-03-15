@@ -218,10 +218,6 @@ async fn add_feed(
     config: &Config,
     input: FeedCreateIn,
 ) -> ApiResult<Json<FeedCreateOut>> {
-    ssrf::validate_remote_url(&input.url, config.testing_mode)
-        .await
-        .map_err(ssrf_error)?;
-
     let folder_id = resolve_folder_id(pool, input.folder_id).await?;
 
     let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE url = ? LIMIT 1")
@@ -233,11 +229,12 @@ async fn add_feed(
         return Err(feed_already_exists());
     }
 
-    let response = feed_http_client
-        .get(&input.url)
-        .send()
+    let response = ssrf::get_with_safe_redirects(feed_http_client, &input.url, config.testing_mode)
         .await
-        .map_err(feed_parse_error)?;
+        .map_err(|error| match error {
+            ssrf::SafeGetError::Validation(error) => ssrf_error(error),
+            ssrf::SafeGetError::Request(error) => feed_parse_error(error),
+        })?;
     if !response.status().is_success() {
         return Err(feed_parse_error(format!(
             "Error parsing feed from `{}`: HTTP {}",

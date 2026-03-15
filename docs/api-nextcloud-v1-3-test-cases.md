@@ -15,6 +15,7 @@ Test cases for implemented Nextcloud News API v1.3 behavior.
 - Verify feed creation succeeds and returns feed metadata plus `newestItemId`.
 - Verify creating the same feed twice returns conflict (`409`).
 - Verify unreadable feed URLs return validation failure (`422`).
+- Verify feed creation rejects redirect targets blocked by SSRF policy.
 - Verify feed deletion removes feed and associated items.
 - Verify deleting unknown feeds returns not found (`404`).
 - Verify feed move endpoint updates target folder.
