@@ -153,24 +153,6 @@ pub async fn enrich_article_record(
     }
 }
 
-/// Inserts an article when its guid hash does not already exist.
-pub async fn insert_article_if_new(
-    pool: &SqlitePool,
-    article: ArticleRecord,
-) -> Result<InsertArticleOutcome, sqlx::Error> {
-    if article_exists_by_guid_hash(pool, &article.guid_hash).await? {
-        return Ok(InsertArticleOutcome::Duplicate {
-            guid_hash: article.guid_hash,
-        });
-    }
-
-    repo::insert_article_record(pool, article.clone()).await?;
-
-    Ok(InsertArticleOutcome::Inserted {
-        guid_hash: article.guid_hash,
-    })
-}
-
 /// Enriches a new article and persists it when its guid hash is not already stored.
 pub async fn ingest_article_if_new(
     context: &ArticleIngestionContext<'_>,

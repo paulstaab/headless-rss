@@ -144,7 +144,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `EML-009`: Stale newsletter entries shall be eligible for cleanup only when older than 90 days, read, and unstarred.
 
 ### Observability
-- `OBS-001`: All incoming API requests shall be logged at `INFO` level with the matched route and query parameters.
+- `OBS-001`: All incoming API requests shall be logged at `INFO` level with the raw request URI, including query parameters when present.
 - `OBS-002`: All outbound LLM requests shall be logged at `INFO` level with the task name and, when available, the associated `feed_id` and `article_id`.
 - `OBS-003`: Extraction of article content as described in `CNT-002` shall be logged with `feed_id`, `article_id` loaded URL at `INFO` level.
 
