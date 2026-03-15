@@ -1,3 +1,5 @@
+//! Scheduled feed refresh logic, dynamic cadence calculation, and stale-article cleanup.
+
 use anyhow::{Context, Result};
 use rand::RngExt;
 use sqlx::{FromRow, SqlitePool};
@@ -23,6 +25,7 @@ const ONE_DAY: i64 = 86_400;
 /// Retention window for stale feed-article cleanup.
 const NINETY_DAYS: i64 = 90 * ONE_DAY;
 
+/// Projection of the feed metadata needed to decide whether and how a feed should be refreshed.
 #[derive(FromRow)]
 struct FeedToUpdate {
     id: i64,
@@ -32,6 +35,17 @@ struct FeedToUpdate {
     use_llm_summary: bool,
 }
 
+/// Shared context for ingesting entries from one feed refresh cycle.
+struct FeedEntryIngestionContext<'a> {
+    pool: &'a SqlitePool,
+    article_http_client: &'a reqwest::Client,
+    config: &'a Config,
+    feed_id: i64,
+    feed_url: &'a str,
+    content_state: FeedContentState,
+}
+
+/// Runs one foreground update cycle for the CLI `update` command.
 pub async fn update_all(config: &Config) -> Result<()> {
     tracing::info!("starting rust feed update cycle");
     let pool = db::create_pool(&config.db_path)
@@ -42,6 +56,7 @@ pub async fn update_all(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Refreshes only feeds whose `next_update_time` is due.
 pub async fn update_due_feeds(
     pool: &SqlitePool,
     config: &Config,
@@ -59,6 +74,7 @@ pub async fn update_due_feeds(
     update_feed_batch(pool, config, testing_mode, feeds, "due").await
 }
 
+/// Forces refresh of all non-mailing-list feeds, ignoring the stored schedule.
 pub async fn update_all_regular_feeds(
     pool: &SqlitePool,
     config: &Config,
@@ -75,6 +91,7 @@ pub async fn update_all_regular_feeds(
     update_feed_batch(pool, config, testing_mode, feeds, "all").await
 }
 
+/// Updates a selected batch of feeds and then runs newsletter ingestion/cleanup.
 async fn update_feed_batch(
     pool: &SqlitePool,
     config: &Config,
@@ -135,6 +152,7 @@ async fn update_feed_batch(
     Ok(feeds.len())
 }
 
+/// Refreshes one feed, ingests up to 50 entries, updates dynamic cadence, and clears error state.
 async fn update_single_feed(
     pool: &SqlitePool,
     feed_http_client: &reqwest::Client,
@@ -177,20 +195,18 @@ async fn update_single_feed(
     let mut inserted = 0usize;
     let mut processed = 0usize;
     let mut current_feed_guid_hashes = Vec::new();
+    let entry_context = FeedEntryIngestionContext {
+        pool,
+        article_http_client,
+        config,
+        feed_id,
+        feed_url: &feed.url,
+        content_state,
+    };
+
     for entry in parsed.entries.iter().take(50) {
         processed += 1;
-        if insert_article_from_entry(
-            pool,
-            article_http_client,
-            config,
-            feed_id,
-            &feed.url,
-            entry,
-            &mut current_feed_guid_hashes,
-            content_state,
-        )
-        .await?
-        {
+        if insert_article_from_entry(&entry_context, entry, &mut current_feed_guid_hashes).await? {
             inserted += 1;
         }
     }
@@ -220,6 +236,10 @@ async fn update_single_feed(
     Ok(())
 }
 
+/// Removes stale feed articles that are no longer present in the latest payload.
+///
+/// Articles are only eligible when they are old, read, and unstarred so refreshes do not
+/// delete recent unread content or user-saved items.
 async fn cleanup_stale_feed_articles(
     pool: &SqlitePool,
     feed_id: i64,
@@ -256,6 +276,7 @@ async fn cleanup_stale_feed_articles(
     Ok(result.rows_affected())
 }
 
+/// Calculates the next refresh timestamp from the last 7 days of observed article output.
 async fn calculate_next_update_time(pool: &SqlitePool, feed_id: i64, now_ts: i64) -> Result<i64> {
     // Derive cadence from recent output over the last 7 days.
     let weekly_count: i64 =
@@ -301,52 +322,42 @@ fn compute_next_update_interval(avg_articles_per_day: f64, jitter_seconds: i64) 
     ((ONE_DAY as f64 / avg_articles_per_day / 4.0).round() as i64).min(TWELVE_HOURS)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Converts one parsed feed entry into a persisted article when it is not a duplicate.
 async fn insert_article_from_entry(
-    pool: &SqlitePool,
-    article_http_client: &reqwest::Client,
-    config: &Config,
-    feed_id: i64,
-    feed_url: &str,
+    entry_context: &FeedEntryIngestionContext<'_>,
     entry: &feed_rs::model::Entry,
     current_feed_guid_hashes: &mut Vec<String>,
-    content_state: FeedContentState,
 ) -> Result<bool> {
-    let Some(article) = article_store::article_record_from_feed_entry(feed_id, entry) else {
-        tracing::debug!(feed_id, "skipping entry without guid/link/title");
+    let Some(article) = article_store::article_record_from_feed_entry(entry_context.feed_id, entry)
+    else {
+        tracing::debug!(
+            feed_id = entry_context.feed_id,
+            "skipping entry without guid/link/title"
+        );
         return Ok(false);
     };
 
     current_feed_guid_hashes.push(article.guid_hash.clone());
 
-    if article_store::article_exists_by_guid_hash(pool, &article.guid_hash)
-        .await
-        .context("failed to check existing article")?
-    {
-        tracing::debug!(
-            feed_id,
-            guid_hash = article.guid_hash,
-            "skipping duplicate entry"
-        );
-        return Ok(false);
-    }
+    let ingestion_context = article_store::ArticleIngestionContext {
+        pool: entry_context.pool,
+        article_http_client: entry_context.article_http_client,
+        config: entry_context.config,
+        feed_url: Some(entry_context.feed_url),
+        content_state: entry_context.content_state,
+    };
 
-    let article = article_store::enrich_article_record(
-        article_http_client,
-        config,
-        feed_url,
-        content_state,
-        article,
-    )
-    .await;
-
-    match article_store::insert_article_if_new(pool, article)
+    match article_store::ingest_article_if_new(&ingestion_context, article)
         .await
         .context("failed to insert article")?
     {
         InsertArticleOutcome::Inserted { .. } => Ok(true),
         InsertArticleOutcome::Duplicate { guid_hash } => {
-            tracing::debug!(feed_id, guid_hash, "skipping duplicate entry");
+            tracing::debug!(
+                feed_id = entry_context.feed_id,
+                guid_hash,
+                "skipping duplicate entry"
+            );
             Ok(false)
         }
     }

@@ -68,19 +68,24 @@ It combines workflow guidance with implementation-aware project conventions.
 - Always keep requirements and test cases updated - see Documentation Sync Policy.
 - Prefer small, focused changes.
 - Preserve existing API behavior and response contracts.
-- When manual runtime validation is needed, start the API server with the VS Code task `Start Server` and keep it running in the background while testing.
+- When manual runtime validation is needed, start the API server from the CLI and keep it running in the background while testing.
+  - Preferred command: `cargo run -- serve --host 127.0.0.1 --port 8000`
+  - If the default bind address is acceptable, `cargo run` is also valid.
 - The local server should listen on `http://localhost:8000`.
 - When finished, update the rustdoc comments for touched modules and functions if necessary. Also document reasons for implementation decisions there.
 
 3. Validate after changes
-- Run `Lint` task.
-- Run `Run All Tests` task.
+- Run lint from the CLI:
+  - `cargo clippy --all-targets -- -D warnings`
+- Run the full test suite from the CLI:
+  - `cargo test`
 - Validate CLI:
   - `cargo run -- --help`
   - `cargo run -- update`
 
 4. Optional end-to-end smoke test
-- Start server.
+- Start server:
+  - `cargo run -- serve --host 127.0.0.1 --port 8000`
 - Verify:
   - `curl http://localhost:8000/status`
   - `curl http://localhost:8000/index.php/apps/news/api/v1-3/feeds`
@@ -137,14 +142,14 @@ When implementing fixes, refactors, or new features, keep documentation synchron
 
 ## Useful Paths
 - App entrypoint: `src/main.rs`
-- API version routers:
-  - `src/api/v1_2.rs`
-  - `src/api/v1_3.rs`
+- API router composition:
+  - `src/api.rs`
 - Core domain modules:
   - `src/article_store.rs`
   - `src/content.rs`
   - `src/email.rs`
   - `src/email_credentials.rs`
+  - `src/repo.rs`
   - `src/updater.rs`
 - CLI: `src/main.rs`
 - Tests: `tests/`

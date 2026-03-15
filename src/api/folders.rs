@@ -11,6 +11,7 @@ use super::errors::{
     ApiResult, folder_already_exists, folder_name_invalid, folder_not_found,
     folder_not_found_with_id, internal_error,
 };
+use crate::repo;
 
 #[derive(FromRow, Serialize)]
 pub(super) struct FolderOut {
@@ -64,23 +65,16 @@ pub(super) async fn create_folder(
         return Err(folder_name_invalid());
     }
 
-    let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM folder WHERE name = ? LIMIT 1")
-        .bind(&input.name)
-        .fetch_optional(&state.pool)
+    let existing = repo::folder_name_exists(&state.pool, &input.name, None)
         .await
         .map_err(internal_error)?;
-
-    if existing.is_some() {
+    if existing {
         return Err(folder_already_exists());
     }
 
-    let result = sqlx::query("INSERT INTO folder (name, is_root) VALUES (?, 0)")
-        .bind(&input.name)
-        .execute(&state.pool)
+    let folder_id = repo::create_folder(&state.pool, &input.name)
         .await
         .map_err(internal_error)?;
-
-    let folder_id = result.last_insert_rowid();
     Ok(Json(FolderCreateOut {
         folders: vec![FolderOut {
             id: folder_id,
@@ -94,43 +88,22 @@ pub(super) async fn delete_folder(
     State(state): State<AppState>,
     Path(folder_id): Path<i64>,
 ) -> ApiResult<StatusCode> {
-    let folder_exists: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-            .bind(folder_id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(internal_error)?;
-
-    if folder_exists.is_none() {
+    if !repo::folder_exists(&state.pool, folder_id)
+        .await
+        .map_err(internal_error)?
+    {
         return Err(folder_not_found());
     }
 
-    let deleted_articles = sqlx::query(
-        "DELETE FROM article WHERE feed_id IN (SELECT id FROM feed WHERE folder_id = ?)",
-    )
-    .bind(folder_id)
-    .execute(&state.pool)
-    .await
-    .map_err(internal_error)?
-    .rows_affected();
-    let deleted_feeds = sqlx::query("DELETE FROM feed WHERE folder_id = ?")
-        .bind(folder_id)
-        .execute(&state.pool)
+    let counts = repo::delete_folder_cascade(&state.pool, folder_id)
         .await
-        .map_err(internal_error)?
-        .rows_affected();
-    let deleted_folders = sqlx::query("DELETE FROM folder WHERE id = ?")
-        .bind(folder_id)
-        .execute(&state.pool)
-        .await
-        .map_err(internal_error)?
-        .rows_affected();
+        .map_err(internal_error)?;
 
     tracing::info!(
         folder_id,
-        deleted_articles,
-        deleted_feeds,
-        deleted_folders,
+        deleted_articles = counts.deleted_articles,
+        deleted_feeds = counts.deleted_feeds,
+        deleted_folders = counts.deleted_folders,
         "folder cleanup completed"
     );
 
@@ -147,31 +120,21 @@ pub(super) async fn rename_folder(
         return Err(folder_name_invalid());
     }
 
-    let folder_exists: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-            .bind(folder_id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(internal_error)?;
-    if folder_exists.is_none() {
+    if !repo::folder_exists(&state.pool, folder_id)
+        .await
+        .map_err(internal_error)?
+    {
         return Err(folder_not_found());
     }
 
-    let duplicate: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM folder WHERE name = ? AND id != ? LIMIT 1")
-            .bind(&input.name)
-            .bind(folder_id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(internal_error)?;
-    if duplicate.is_some() {
+    if repo::folder_name_exists(&state.pool, &input.name, Some(folder_id))
+        .await
+        .map_err(internal_error)?
+    {
         return Err(folder_already_exists());
     }
 
-    sqlx::query("UPDATE folder SET name = ? WHERE id = ?")
-        .bind(&input.name)
-        .bind(folder_id)
-        .execute(&state.pool)
+    repo::rename_folder(&state.pool, folder_id, &input.name)
         .await
         .map_err(internal_error)?;
 
@@ -184,25 +147,16 @@ pub(super) async fn mark_folder_items_read(
     Path(folder_id): Path<i64>,
     Json(input): Json<MarkAllItemsReadIn>,
 ) -> ApiResult<StatusCode> {
-    let folder_exists: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-            .bind(folder_id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(internal_error)?;
-    if folder_exists.is_none() {
+    if !repo::folder_exists(&state.pool, folder_id)
+        .await
+        .map_err(internal_error)?
+    {
         return Err(folder_not_found());
     }
 
-    sqlx::query(
-        "UPDATE article SET unread = 0, last_modified = CAST(strftime('%s','now') AS INTEGER) \
-         WHERE feed_id IN (SELECT id FROM feed WHERE folder_id = ?) AND id <= ?",
-    )
-    .bind(folder_id)
-    .bind(input.newest_item_id)
-    .execute(&state.pool)
-    .await
-    .map_err(internal_error)?;
+    repo::mark_folder_items_read(&state.pool, folder_id, input.newest_item_id)
+        .await
+        .map_err(internal_error)?;
 
     Ok(StatusCode::OK)
 }
@@ -210,37 +164,16 @@ pub(super) async fn mark_folder_items_read(
 /// Resolves `null` and `0` to the internal root folder and validates explicit ids.
 pub(super) async fn resolve_folder_id(pool: &SqlitePool, folder_id: Option<i64>) -> ApiResult<i64> {
     if folder_id.is_none() || folder_id == Some(0) {
-        return get_root_folder_id(pool).await;
+        return repo::get_root_folder_id(pool).await.map_err(internal_error);
     }
 
     let requested_id = folder_id.unwrap_or_default();
-    let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM folder WHERE id = ? LIMIT 1")
-        .bind(requested_id)
-        .fetch_optional(pool)
+    let exists = repo::folder_exists(pool, requested_id)
         .await
         .map_err(internal_error)?;
-
-    if exists.is_none() {
+    if !exists {
         return Err(folder_not_found_with_id(requested_id));
     }
 
     Ok(requested_id)
-}
-
-/// Returns the root folder id, creating it when needed for a fresh database.
-pub(super) async fn get_root_folder_id(pool: &SqlitePool) -> ApiResult<i64> {
-    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM folder WHERE is_root = 1 LIMIT 1")
-        .fetch_optional(pool)
-        .await
-        .map_err(internal_error)?;
-
-    if let Some(id) = id {
-        return Ok(id);
-    }
-
-    let result = sqlx::query("INSERT INTO folder (name, is_root) VALUES ('', 1)")
-        .execute(pool)
-        .await
-        .map_err(internal_error)?;
-    Ok(result.last_insert_rowid())
 }

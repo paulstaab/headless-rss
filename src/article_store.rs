@@ -6,7 +6,8 @@ use feed_rs::model::Entry;
 use sqlx::SqlitePool;
 
 use crate::config::Config;
-use crate::content::{self, FeedContentState};
+use crate::content::{self, ArticleContentContext, ArticleContentPayload, FeedContentState};
+use crate::repo;
 
 /// Internal representation of a new article before persistence.
 #[derive(Debug, Clone)]
@@ -33,6 +34,18 @@ pub struct ArticleRecord {
 pub enum InsertArticleOutcome {
     Inserted { guid_hash: String },
     Duplicate { guid_hash: String },
+}
+
+/// Shared context for enriching and persisting a candidate article.
+///
+/// The feed URL is optional so newsletter ingestion can reuse the same pipeline without
+/// pretending that IMAP-derived items came from a fetchable feed origin.
+pub struct ArticleIngestionContext<'a> {
+    pub pool: &'a SqlitePool,
+    pub article_http_client: &'a reqwest::Client,
+    pub config: &'a Config,
+    pub feed_url: Option<&'a str>,
+    pub content_state: FeedContentState,
 }
 
 /// Computes the MD5 guid hash used as the stable article de-duplication key.
@@ -108,22 +121,26 @@ pub async fn article_exists_by_guid_hash(
 pub async fn enrich_article_record(
     article_http_client: &reqwest::Client,
     config: &Config,
-    feed_url: &str,
+    feed_url: Option<&str>,
     content_state: FeedContentState,
     article: ArticleRecord,
 ) -> ArticleRecord {
     let enriched = content::enrich_article_content(
-        article_http_client,
-        config,
-        Some(article.feed_id),
-        None,
-        Some(feed_url),
-        article.url.as_deref(),
-        article.content,
-        article.summary,
-        article.media_thumbnail,
-        content_state.use_extracted_fulltext,
-        content_state.use_llm_summary,
+        ArticleContentContext {
+            article_http_client,
+            config,
+            feed_id: Some(article.feed_id),
+            article_id: None,
+            feed_url,
+            article_url: article.url.as_deref(),
+        },
+        ArticleContentPayload {
+            content: article.content,
+            summary: article.summary,
+            media_thumbnail: article.media_thumbnail,
+            use_extracted_fulltext: content_state.use_extracted_fulltext,
+            use_llm_summary: content_state.use_llm_summary,
+        },
     )
     .await;
 
@@ -136,37 +153,27 @@ pub async fn enrich_article_record(
     }
 }
 
-/// Inserts an article when its guid hash does not already exist.
-pub async fn insert_article_if_new(
-    pool: &SqlitePool,
+/// Enriches a new article and persists it when its guid hash is not already stored.
+pub async fn ingest_article_if_new(
+    context: &ArticleIngestionContext<'_>,
     article: ArticleRecord,
 ) -> Result<InsertArticleOutcome, sqlx::Error> {
-    if article_exists_by_guid_hash(pool, &article.guid_hash).await? {
+    if article_exists_by_guid_hash(context.pool, &article.guid_hash).await? {
         return Ok(InsertArticleOutcome::Duplicate {
             guid_hash: article.guid_hash,
         });
     }
 
-    sqlx::query(
-        "INSERT INTO article (title, content, author, content_hash, enclosure_link, enclosure_mime, feed_id, fingerprint, guid, guid_hash, last_modified, media_description, media_thumbnail, pub_date, rtl, starred, unread, updated_date, url, summary) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?, ?, ?)",
+    let article = enrich_article_record(
+        context.article_http_client,
+        context.config,
+        context.feed_url,
+        context.content_state,
+        article,
     )
-    .bind(article.title)
-    .bind(article.content)
-    .bind(article.author)
-    .bind(article.content_hash)
-    .bind(article.feed_id)
-    .bind(article.guid)
-    .bind(&article.guid_hash)
-    .bind(article.last_modified)
-    .bind(article.media_thumbnail)
-    .bind(article.pub_date)
-    .bind(article.starred)
-    .bind(article.unread)
-    .bind(article.updated_date)
-    .bind(article.url)
-    .bind(article.summary)
-    .execute(pool)
-    .await?;
+    .await;
+
+    repo::insert_article_record(context.pool, article.clone()).await?;
 
     Ok(InsertArticleOutcome::Inserted {
         guid_hash: article.guid_hash,

@@ -10,6 +10,8 @@ API test cases are specified in separate documents:
 - `docs/api-nextcloud-v1-2-test-cases.md`
 - `docs/api-nextcloud-v1-3-test-cases.md`
 
+Rust API tests seed fixture data on top of the production SQL migrations so schema coverage stays aligned with runtime behavior.
+
 ## Enumerated Test Cases
 
 ### Service Runtime and CORS

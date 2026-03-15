@@ -17,12 +17,13 @@ use sqlx::{FromRow, SqlitePool};
 use std::env;
 use std::fs;
 
-use crate::article_store::{self, ArticleRecord, InsertArticleOutcome};
+use crate::article_store::{self, ArticleIngestionContext, ArticleRecord, InsertArticleOutcome};
 use crate::config::Config;
 use crate::content;
 use crate::http_client;
 use crate::llm;
 use crate::llm::LlmRequestContext;
+use crate::repo;
 
 const NINETY_DAYS: i64 = 90 * 24 * 60 * 60;
 const NEWSLETTER_MAX_CHARS: usize = 5_000;
@@ -171,19 +172,27 @@ async fn process_email_message(
     let llm_result =
         parse_newsletter_with_llm(config, feed_id, &subject, &from_address, &cleaned_content).await;
     let articles = build_articles_from_email(
-        article_http_client,
-        config,
         feed_id,
         &subject,
         &from_address,
         &cleaned_content,
         llm_result,
-    )
-    .await;
+    );
 
     let mut inserted = 0usize;
+    let ingestion = ArticleIngestionContext {
+        pool,
+        article_http_client,
+        config,
+        feed_url: None,
+        content_state: content::FeedContentState {
+            last_quality_check: None,
+            use_extracted_fulltext: false,
+            use_llm_summary: false,
+        },
+    };
     for article in articles {
-        match article_store::insert_article_if_new(pool, article.into_record(feed_id))
+        match article_store::ingest_article_if_new(&ingestion, article)
             .await
             .context("failed to insert newsletter article")?
         {
@@ -195,54 +204,14 @@ async fn process_email_message(
     Ok(inserted)
 }
 
-#[derive(Debug)]
-struct ArticleDraft {
-    title: String,
-    author: String,
-    content: String,
-    summary: Option<String>,
-    url: Option<String>,
-    guid: String,
-    content_hash: Option<String>,
-    media_thumbnail: Option<String>,
-    last_modified: i64,
-    pub_date: i64,
-    updated_date: i64,
-}
-
-impl ArticleDraft {
-    /// Converts a newsletter-specific draft into the shared persistence model.
-    fn into_record(self, feed_id: i64) -> ArticleRecord {
-        ArticleRecord {
-            title: Some(self.title),
-            content: Some(self.content),
-            author: Some(self.author),
-            summary: self.summary,
-            content_hash: self.content_hash,
-            feed_id,
-            guid_hash: article_store::guid_hash(&self.guid),
-            guid: self.guid,
-            last_modified: self.last_modified,
-            media_thumbnail: self.media_thumbnail,
-            pub_date: Some(self.pub_date),
-            updated_date: Some(self.updated_date),
-            url: self.url,
-            starred: false,
-            unread: true,
-        }
-    }
-}
-
 /// Builds one or more article drafts from a cleaned newsletter body and optional LLM parse result.
-async fn build_articles_from_email(
-    article_http_client: &reqwest::Client,
-    config: &Config,
+fn build_articles_from_email(
     feed_id: i64,
     subject: &str,
     from_address: &str,
     content: &str,
     llm_result: Option<NewsletterLlmResult>,
-) -> Vec<ArticleDraft> {
+) -> Vec<ArticleRecord> {
     match llm_result {
         Some(result) if result.mode == "multi" => {
             let mut articles = Vec::new();
@@ -252,117 +221,82 @@ async fn build_articles_from_email(
                     .content
                     .or_else(|| item.summary.clone())
                     .unwrap_or_default();
-                articles.push(
-                    create_article_draft(
-                        article_http_client,
-                        config,
-                        feed_id,
-                        &title,
-                        from_address,
-                        &item_content,
-                        item.summary,
-                        Some(item.url),
-                    )
-                    .await,
-                );
+                articles.push(build_newsletter_article_record(
+                    feed_id,
+                    &title,
+                    from_address,
+                    &item_content,
+                    item.summary,
+                    Some(item.url),
+                ));
             }
 
             if !articles.is_empty() {
                 return articles;
             }
 
-            vec![
-                create_article_draft(
-                    article_http_client,
-                    config,
-                    feed_id,
-                    subject,
-                    from_address,
-                    content,
-                    result.summary,
-                    None,
-                )
-                .await,
-            ]
+            vec![build_newsletter_article_record(
+                feed_id,
+                subject,
+                from_address,
+                content,
+                result.summary,
+                None,
+            )]
         }
         Some(result) => {
             let article_content = result.content.unwrap_or_else(|| content.to_string());
-            vec![
-                create_article_draft(
-                    article_http_client,
-                    config,
-                    feed_id,
-                    subject,
-                    from_address,
-                    &article_content,
-                    result.summary,
-                    None,
-                )
-                .await,
-            ]
+            vec![build_newsletter_article_record(
+                feed_id,
+                subject,
+                from_address,
+                &article_content,
+                result.summary,
+                None,
+            )]
         }
-        None => {
-            vec![
-                create_article_draft(
-                    article_http_client,
-                    config,
-                    feed_id,
-                    subject,
-                    from_address,
-                    content,
-                    None,
-                    None,
-                )
-                .await,
-            ]
-        }
+        None => vec![build_newsletter_article_record(
+            feed_id,
+            subject,
+            from_address,
+            content,
+            None,
+            None,
+        )],
     }
 }
 
-/// Enriches one newsletter-derived article draft with summary, content hash, and thumbnail data.
-#[allow(clippy::too_many_arguments)]
-async fn create_article_draft(
-    article_http_client: &reqwest::Client,
-    config: &Config,
+/// Builds a newsletter-derived article record before shared enrichment and insertion.
+fn build_newsletter_article_record(
     feed_id: i64,
     subject: &str,
     from_address: &str,
     content: &str,
     summary: Option<String>,
     url: Option<String>,
-) -> ArticleDraft {
-    let enriched = content::enrich_article_content(
-        article_http_client,
-        config,
-        Some(feed_id),
-        None,
-        None,
-        url.as_deref(),
-        Some(content.to_string()),
-        summary,
-        None,
-        false,
-        false,
-    )
-    .await;
+) -> ArticleRecord {
     let now_ts = article_store::unix_now();
     let guid = match url.as_deref() {
         Some(url) => format!("{from_address}:{subject}:{url}"),
         None => format!("{from_address}:{subject}"),
     };
 
-    ArticleDraft {
-        title: subject.to_string(),
-        author: from_address.to_string(),
-        content: enriched.content.unwrap_or_default(),
-        summary: enriched.summary,
-        url,
+    ArticleRecord {
+        title: Some(subject.to_string()),
+        author: Some(from_address.to_string()),
+        content: Some(content.to_string()),
+        summary,
+        content_hash: None,
+        feed_id,
+        guid_hash: article_store::guid_hash(&guid),
         guid,
-        content_hash: enriched.content_hash,
-        media_thumbnail: enriched.media_thumbnail,
         last_modified: now_ts,
-        pub_date: now_ts,
-        updated_date: now_ts,
+        media_thumbnail: None,
+        pub_date: Some(now_ts),
+        updated_date: Some(now_ts),
+        url,
+        starred: false,
+        unread: true,
     }
 }
 
@@ -372,46 +306,33 @@ async fn find_or_create_mailing_list_feed(
     from_address: &str,
     feed_title: &str,
 ) -> Result<i64> {
-    let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE url = ? LIMIT 1")
+    let existing_id: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE url = ? LIMIT 1")
         .bind(from_address)
         .fetch_optional(pool)
         .await
         .context("failed to query mailing-list feed")?;
-    if let Some(feed_id) = existing {
+
+    if let Some(feed_id) = existing_id {
         return Ok(feed_id);
     }
 
     let root_id = root_folder_id(pool).await?;
-    let result = sqlx::query(
-        "INSERT INTO feed (url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (?, ?, NULL, ?, NULL, ?, 0, NULL, 0, 0, NULL, 1, NULL, 0, 0)",
+    repo::create_mailing_list_feed(
+        pool,
+        from_address,
+        feed_title,
+        root_id,
+        article_store::unix_now(),
     )
-    .bind(from_address)
-    .bind(feed_title)
-    .bind(article_store::unix_now())
-    .bind(root_id)
-    .execute(pool)
     .await
-    .context("failed to create mailing-list feed")?;
-
-    Ok(result.last_insert_rowid())
+    .context("failed to create mailing-list feed")
 }
 
 /// Resolves the internal root folder, creating it if a fresh test database does not contain one.
 async fn root_folder_id(pool: &SqlitePool) -> Result<i64> {
-    let existing: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM folder WHERE is_root = 1 LIMIT 1")
-            .fetch_optional(pool)
-            .await
-            .context("failed to query root folder")?;
-    if let Some(folder_id) = existing {
-        return Ok(folder_id);
-    }
-
-    let result = sqlx::query("INSERT INTO folder (name, is_root) VALUES ('', 1)")
-        .execute(pool)
+    repo::get_root_folder_id(pool)
         .await
-        .context("failed to create root folder")?;
-    Ok(result.last_insert_rowid())
+        .context("failed to query root folder")
 }
 
 /// Loads unread mailbox messages either from the test hook or from the configured IMAP server.
@@ -964,8 +885,6 @@ mod tests {
 
     #[tokio::test]
     async fn llm_multi_mode_builds_separate_articles_and_caps_to_25_items() {
-        let client = reqwest::Client::new();
-        let cfg = config();
         let items = (0..(NEWSLETTER_MAX_ITEMS + 5))
             .map(|index| NewsletterItem {
                 title: Some(format!("Item {index}")),
@@ -982,15 +901,12 @@ mod tests {
         };
 
         let articles = build_articles_from_email(
-            &client,
-            &cfg,
             1,
             "Newsletter",
             "list@example.com",
             "fallback body",
             Some(result),
-        )
-        .await;
+        );
 
         assert_eq!(articles.len(), NEWSLETTER_MAX_ITEMS);
         assert_eq!(articles[0].url.as_deref(), Some("https://example.com/0"));
@@ -999,8 +915,6 @@ mod tests {
 
     #[tokio::test]
     async fn llm_single_mode_builds_one_article_with_clean_content() {
-        let client = reqwest::Client::new();
-        let cfg = config();
         let result = NewsletterLlmResult {
             mode: "single".to_string(),
             summary: Some("Concise summary".to_string()),
@@ -1009,18 +923,15 @@ mod tests {
         };
 
         let articles = build_articles_from_email(
-            &client,
-            &cfg,
             1,
             "Newsletter",
             "list@example.com",
             "fallback body",
             Some(result),
-        )
-        .await;
+        );
 
         assert_eq!(articles.len(), 1);
-        assert_eq!(articles[0].content, "Cleaned content text");
+        assert_eq!(articles[0].content.as_deref(), Some("Cleaned content text"));
         assert_eq!(articles[0].summary.as_deref(), Some("Concise summary"));
         assert!(articles[0].url.is_none());
     }

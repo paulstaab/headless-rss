@@ -9,6 +9,7 @@ use sqlx::{FromRow, SqlitePool};
 use crate::article_store;
 use crate::config::Config;
 use crate::content::{self, FeedContentState};
+use crate::repo;
 use crate::ssrf;
 
 use super::AppState;
@@ -88,27 +89,12 @@ pub(super) async fn get_feeds(State(state): State<AppState>) -> ApiResult<Json<F
     Ok(Json(FeedGetOut { feeds }))
 }
 
-/// Adds a feed through the v1-2 API variant.
-pub(super) async fn v1_2_add_feed(
+/// Adds a feed through either supported Nextcloud API version.
+pub(super) async fn add_feed(
     State(state): State<AppState>,
     Json(input): Json<FeedCreateIn>,
 ) -> ApiResult<Json<FeedCreateOut>> {
-    add_feed(
-        &state.pool,
-        &state.feed_http_client,
-        &state.article_http_client,
-        &state.config,
-        input,
-    )
-    .await
-}
-
-/// Adds a feed through the v1-3 API variant.
-pub(super) async fn v1_3_add_feed(
-    State(state): State<AppState>,
-    Json(input): Json<FeedCreateIn>,
-) -> ApiResult<Json<FeedCreateOut>> {
-    add_feed(
+    add_feed_impl(
         &state.pool,
         &state.feed_http_client,
         &state.article_http_client,
@@ -123,95 +109,56 @@ pub(super) async fn delete_feed(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
 ) -> ApiResult<StatusCode> {
-    let feed_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE id = ? LIMIT 1")
-        .bind(feed_id)
-        .fetch_optional(&state.pool)
+    if !repo::feed_exists(&state.pool, feed_id)
         .await
-        .map_err(internal_error)?;
-
-    if feed_exists.is_none() {
+        .map_err(internal_error)?
+    {
         return Err(feed_not_found_with_id(feed_id));
     }
 
-    let deleted_articles = sqlx::query("DELETE FROM article WHERE feed_id = ?")
-        .bind(feed_id)
-        .execute(&state.pool)
+    let counts = repo::delete_feed_cascade(&state.pool, feed_id)
         .await
-        .map_err(internal_error)?
-        .rows_affected();
-    let deleted_feeds = sqlx::query("DELETE FROM feed WHERE id = ?")
-        .bind(feed_id)
-        .execute(&state.pool)
-        .await
-        .map_err(internal_error)?
-        .rows_affected();
+        .map_err(internal_error)?;
 
     tracing::info!(
         feed_id,
-        deleted_articles,
-        deleted_feeds,
+        deleted_articles = counts.deleted_articles,
+        deleted_feeds = counts.deleted_feeds,
         "feed/article cleanup completed"
     );
 
     Ok(StatusCode::OK)
 }
 
-/// Moves a feed through the v1-2 API variant.
-pub(super) async fn v1_2_move_feed(
+/// Moves a feed to a different folder.
+pub(super) async fn move_feed(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
     Json(input): Json<FeedMoveIn>,
 ) -> ApiResult<StatusCode> {
-    move_feed(&state.pool, feed_id, input.folder_id).await
+    move_feed_impl(&state.pool, feed_id, input.folder_id).await
 }
 
-/// Moves a feed through the v1-3 API variant.
-pub(super) async fn v1_3_move_feed(
-    State(state): State<AppState>,
-    Path(feed_id): Path<i64>,
-    Json(input): Json<FeedMoveIn>,
-) -> ApiResult<StatusCode> {
-    move_feed(&state.pool, feed_id, input.folder_id).await
-}
-
-/// Renames a feed through the v1-2 API variant.
-pub(super) async fn v1_2_rename_feed(
+/// Renames a feed.
+pub(super) async fn rename_feed(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
     Json(input): Json<FeedRenameIn>,
 ) -> ApiResult<StatusCode> {
-    rename_feed(&state.pool, feed_id, &input.feed_title).await
+    rename_feed_impl(&state.pool, feed_id, &input.feed_title).await
 }
 
-/// Renames a feed through the v1-3 API variant.
-pub(super) async fn v1_3_rename_feed(
-    State(state): State<AppState>,
-    Path(feed_id): Path<i64>,
-    Json(input): Json<FeedRenameIn>,
-) -> ApiResult<StatusCode> {
-    rename_feed(&state.pool, feed_id, &input.feed_title).await
-}
-
-/// Marks a feed's items as read through the v1-2 API variant.
-pub(super) async fn v1_2_mark_feed_items_read(
+/// Marks all feed items up to a boundary as read.
+pub(super) async fn mark_feed_items_read(
     State(state): State<AppState>,
     Path(feed_id): Path<i64>,
     Json(input): Json<super::folders::MarkAllItemsReadIn>,
 ) -> ApiResult<StatusCode> {
-    mark_feed_items_read(&state.pool, feed_id, input.newest_item_id).await
-}
-
-/// Marks a feed's items as read through the v1-3 API variant.
-pub(super) async fn v1_3_mark_feed_items_read(
-    State(state): State<AppState>,
-    Path(feed_id): Path<i64>,
-    Json(input): Json<super::folders::MarkAllItemsReadIn>,
-) -> ApiResult<StatusCode> {
-    mark_feed_items_read(&state.pool, feed_id, input.newest_item_id).await
+    mark_feed_items_read_impl(&state.pool, feed_id, input.newest_item_id).await
 }
 
 /// Validates feed input, persists the feed row, and ingests the initial article set.
-async fn add_feed(
+async fn add_feed_impl(
     pool: &SqlitePool,
     feed_http_client: &reqwest::Client,
     article_http_client: &reqwest::Client,
@@ -220,12 +167,10 @@ async fn add_feed(
 ) -> ApiResult<Json<FeedCreateOut>> {
     let folder_id = resolve_folder_id(pool, input.folder_id).await?;
 
-    let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE url = ? LIMIT 1")
-        .bind(&input.url)
-        .fetch_optional(pool)
+    let existing = repo::feed_exists_by_url(pool, &input.url)
         .await
         .map_err(internal_error)?;
-    if existing.is_some() {
+    if existing {
         return Err(feed_already_exists());
     }
 
@@ -315,23 +260,14 @@ async fn insert_article_from_entry(
         return Ok(());
     };
 
-    if article_store::article_exists_by_guid_hash(pool, &article.guid_hash)
-        .await
-        .map_err(internal_error)?
-    {
-        return Ok(());
-    }
-
-    let article = article_store::enrich_article_record(
+    let context = article_store::ArticleIngestionContext {
+        pool,
         article_http_client,
         config,
-        feed_url,
+        feed_url: Some(feed_url),
         content_state,
-        article,
-    )
-    .await;
-
-    let _ = article_store::insert_article_if_new(pool, article)
+    };
+    let _ = article_store::ingest_article_if_new(&context, article)
         .await
         .map_err(internal_error)?;
 
@@ -339,25 +275,20 @@ async fn insert_article_from_entry(
 }
 
 /// Moves a feed to the requested folder after validating both identifiers.
-async fn move_feed(
+async fn move_feed_impl(
     pool: &SqlitePool,
     feed_id: i64,
     folder_id: Option<i64>,
 ) -> ApiResult<StatusCode> {
-    let feed_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE id = ? LIMIT 1")
-        .bind(feed_id)
-        .fetch_optional(pool)
+    if !repo::feed_exists(pool, feed_id)
         .await
-        .map_err(internal_error)?;
-    if feed_exists.is_none() {
+        .map_err(internal_error)?
+    {
         return Err(feed_not_found_with_id(feed_id));
     }
 
     let resolved_folder_id = resolve_folder_id(pool, folder_id).await?;
-    sqlx::query("UPDATE feed SET folder_id = ? WHERE id = ?")
-        .bind(resolved_folder_id)
-        .bind(feed_id)
-        .execute(pool)
+    repo::move_feed(pool, feed_id, resolved_folder_id)
         .await
         .map_err(internal_error)?;
 
@@ -365,43 +296,37 @@ async fn move_feed(
 }
 
 /// Updates the stored display title for a single feed.
-async fn rename_feed(pool: &SqlitePool, feed_id: i64, feed_title: &str) -> ApiResult<StatusCode> {
-    let result = sqlx::query("UPDATE feed SET title = ? WHERE id = ?")
-        .bind(feed_title)
-        .bind(feed_id)
-        .execute(pool)
+async fn rename_feed_impl(
+    pool: &SqlitePool,
+    feed_id: i64,
+    feed_title: &str,
+) -> ApiResult<StatusCode> {
+    let affected = repo::rename_feed(pool, feed_id, feed_title)
         .await
         .map_err(internal_error)?;
 
-    if result.rows_affected() == 0 {
+    if affected == 0 {
         return Err(feed_not_found_with_id(feed_id));
     }
     Ok(StatusCode::OK)
 }
 
 /// Marks items in a single feed as read up to the provided newest item boundary.
-async fn mark_feed_items_read(
+async fn mark_feed_items_read_impl(
     pool: &SqlitePool,
     feed_id: i64,
     newest_item_id: i64,
 ) -> ApiResult<StatusCode> {
-    let feed_exists: Option<i64> = sqlx::query_scalar("SELECT id FROM feed WHERE id = ? LIMIT 1")
-        .bind(feed_id)
-        .fetch_optional(pool)
+    if !repo::feed_exists(pool, feed_id)
         .await
-        .map_err(internal_error)?;
-    if feed_exists.is_none() {
+        .map_err(internal_error)?
+    {
         return Err(feed_not_found_with_id(feed_id));
     }
 
-    sqlx::query(
-        "UPDATE article SET unread = 0, last_modified = CAST(strftime('%s','now') AS INTEGER) WHERE feed_id = ? AND id <= ?",
-    )
-    .bind(feed_id)
-    .bind(newest_item_id)
-    .execute(pool)
-    .await
-    .map_err(internal_error)?;
+    repo::mark_feed_items_read(pool, feed_id, newest_item_id)
+        .await
+        .map_err(internal_error)?;
 
     Ok(StatusCode::OK)
 }

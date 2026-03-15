@@ -9,6 +9,7 @@ use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
 use super::AppState;
 use super::errors::{ApiResult, bad_request_error, internal_error, item_not_found};
 use super::folders::MarkAllItemsReadIn;
+use crate::repo::{self, ArticleFlag};
 
 // Maximum number of GUID items allowed in a single request to prevent
 // unbounded memory allocation and database load from user input.
@@ -320,7 +321,7 @@ pub(super) async fn v1_2_mark_multiple_items_as_unstarred(
 }
 
 /// Marks all items as read through the v1-2 API variant.
-pub(super) async fn v1_2_mark_all_items_as_read(
+pub(super) async fn mark_all_items_as_read_v1_2(
     State(state): State<AppState>,
     Json(input): Json<MarkAllItemsReadIn>,
 ) -> ApiResult<StatusCode> {
@@ -440,7 +441,7 @@ pub(super) async fn v1_3_mark_multiple_items_as_unstarred(
 }
 
 /// Marks all items as read through the v1-3 API variant.
-pub(super) async fn v1_3_mark_all_items_as_read(
+pub(super) async fn mark_all_items_as_read_v1_3(
     State(state): State<AppState>,
     Json(input): Json<MarkAllItemsReadIn>,
 ) -> ApiResult<StatusCode> {
@@ -558,13 +559,9 @@ async fn get_article_id_by_guid_hash(
     feed_id: i64,
     guid_hash: &str,
 ) -> ApiResult<i64> {
-    let article_id: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM article WHERE feed_id = ? AND guid_hash = ? LIMIT 1")
-            .bind(feed_id)
-            .bind(guid_hash)
-            .fetch_optional(pool)
-            .await
-            .map_err(internal_error)?;
+    let article_id = repo::article_id_by_guid_hash(pool, feed_id, guid_hash)
+        .await
+        .map_err(internal_error)?;
 
     article_id.ok_or_else(item_not_found)
 }
@@ -590,35 +587,23 @@ enum MissingBehavior {
     AllowEmptyInput,
 }
 
-enum MutationField {
-    Unread,
-    Starred,
-}
-
 struct ItemMutation {
-    field: MutationField,
+    field: ArticleFlag,
     value: bool,
 }
 
 impl ItemMutation {
     fn unread(unread: bool) -> Self {
         Self {
-            field: MutationField::Unread,
+            field: ArticleFlag::Unread,
             value: unread,
         }
     }
 
     fn starred(starred: bool) -> Self {
         Self {
-            field: MutationField::Starred,
+            field: ArticleFlag::Starred,
             value: starred,
-        }
-    }
-
-    fn column_name(&self) -> &'static str {
-        match self.field {
-            MutationField::Unread => "unread",
-            MutationField::Starred => "starred",
         }
     }
 }
@@ -634,19 +619,7 @@ async fn mark_item_ids(
     }
 
     if matches!(missing_behavior, MissingBehavior::RequireExisting) {
-        let mut check_qb: QueryBuilder<'_, Sqlite> =
-            QueryBuilder::new("SELECT COUNT(*) FROM article WHERE id IN (");
-        {
-            let mut separated = check_qb.separated(", ");
-            for id in item_ids {
-                separated.push_bind(*id);
-            }
-        }
-        check_qb.push(")");
-
-        let existing_count: i64 = check_qb
-            .build_query_scalar()
-            .fetch_one(pool)
+        let existing_count = repo::existing_article_count(pool, item_ids)
             .await
             .map_err(internal_error)?;
         if existing_count == 0 {
@@ -654,31 +627,16 @@ async fn mark_item_ids(
         }
     }
 
-    let mut qb: QueryBuilder<'_, Sqlite> = QueryBuilder::new("UPDATE article SET ");
-    qb.push(mutation.column_name());
-    qb.push(" = ");
-    qb.push_bind(mutation.value);
-    qb.push(", last_modified = CAST(strftime('%s','now') AS INTEGER) WHERE id IN (");
-    {
-        let mut separated = qb.separated(", ");
-        for id in item_ids {
-            separated.push_bind(*id);
-        }
-    }
-    qb.push(")");
-
-    qb.build().execute(pool).await.map_err(internal_error)?;
+    repo::update_article_flags(pool, item_ids, mutation.field, mutation.value)
+        .await
+        .map_err(internal_error)?;
     Ok(StatusCode::OK)
 }
 
 async fn mark_all_items_read(pool: &SqlitePool, newest_item_id: i64) -> ApiResult<StatusCode> {
-    sqlx::query(
-        "UPDATE article SET unread = 0, last_modified = CAST(strftime('%s','now') AS INTEGER) WHERE id <= ?",
-    )
-    .bind(newest_item_id)
-    .execute(pool)
-    .await
-    .map_err(internal_error)?;
+    repo::mark_all_items_read(pool, newest_item_id)
+        .await
+        .map_err(internal_error)?;
 
     Ok(StatusCode::OK)
 }
