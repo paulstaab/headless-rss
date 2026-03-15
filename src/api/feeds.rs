@@ -271,6 +271,7 @@ async fn add_feed(
         article_http_client,
         config,
         feed_id,
+        &input.url,
         FeedContentState {
             last_quality_check: None,
             use_extracted_fulltext: false,
@@ -287,6 +288,7 @@ async fn add_feed(
             article_http_client,
             config,
             feed_id,
+            &input.url,
             entry,
             content_state,
         )
@@ -305,6 +307,7 @@ async fn insert_article_from_entry(
     article_http_client: &reqwest::Client,
     config: &Config,
     feed_id: i64,
+    feed_url: &str,
     entry: &feed_rs::model::Entry,
     content_state: FeedContentState,
 ) -> ApiResult<()> {
@@ -319,9 +322,14 @@ async fn insert_article_from_entry(
         return Ok(());
     }
 
-    let article =
-        article_store::enrich_article_record(article_http_client, config, content_state, article)
-            .await;
+    let article = article_store::enrich_article_record(
+        article_http_client,
+        config,
+        feed_url,
+        content_state,
+        article,
+    )
+    .await;
 
     let _ = article_store::insert_article_if_new(pool, article)
         .await

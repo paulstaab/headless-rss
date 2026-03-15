@@ -48,6 +48,7 @@ Source: `tests/test_article_extraction.py`
 | ID | Case | Description | Expected Result |
 |---|---|---|---|
 | TC-ART-001 | Extract main article body | Run article extraction on a fixture HTML page containing body and footer. | Main body text is included; footer text is excluded. |
+| TC-ART-002 | Skip extraction on TLD mismatch | Evaluate optional article extraction for a feed URL and article URL with different TLDs. | CNT-002 extraction is skipped, a warning includes both TLDs, and feed-provided content remains the chosen article text. |
 
 ### Media Thumbnail Extraction
 Source: `tests/test_media_thumbnail.py`

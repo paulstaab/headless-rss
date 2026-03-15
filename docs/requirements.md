@@ -91,7 +91,10 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 
 ### Content Extraction And Summarization
 - `CNT-001`: If feed metadata does not provide a thumbnail, the system shall extract the first image URL from HTML content when available.
-- `CNT-002`: The system shall support optional full-text extraction from article URLs.
+- `CNT-002`: Optional full-text extraction from article URLs:
+  - shall extract the text of the article from the articles website,
+  - shall run only when the article URL TLD matches the feed URL TLD,
+  - shall be skipped with a warning that includes both TLDs when the article URL TLD and feed URL TLD do not match.
 - `CNT-003`: Feed content quality evaluation:
   - shall run when `last_quality_check` is missing or older than about 30 days,
   - shall use a representative feed entry that has both a link and feed-provided content or summary,
