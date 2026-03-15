@@ -311,20 +311,28 @@ async fn insert_article_from_entry(
     current_feed_guid_hashes: &mut Vec<String>,
     content_state: FeedContentState,
 ) -> Result<bool> {
-    let Some(article) = article_store::article_record_from_feed_entry(
-        article_http_client,
-        config,
-        feed_id,
-        entry,
-        content_state,
-    )
-    .await
-    else {
+    let Some(article) = article_store::article_record_from_feed_entry(feed_id, entry) else {
         tracing::debug!(feed_id, "skipping entry without guid/link/title");
         return Ok(false);
     };
 
     current_feed_guid_hashes.push(article.guid_hash.clone());
+
+    if article_store::article_exists_by_guid_hash(pool, &article.guid_hash)
+        .await
+        .context("failed to check existing article")?
+    {
+        tracing::debug!(
+            feed_id,
+            guid_hash = article.guid_hash,
+            "skipping duplicate entry"
+        );
+        return Ok(false);
+    }
+
+    let article =
+        article_store::enrich_article_record(article_http_client, config, content_state, article)
+            .await;
 
     match article_store::insert_article_if_new(pool, article)
         .await
@@ -345,6 +353,9 @@ fn unix_now() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use axum::Router;
     use axum::http::header as http_header;
     use axum::http::{HeaderMap as AxumHeaderMap, StatusCode};
@@ -919,6 +930,48 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn update_due_feeds_skips_extraction_and_summary_for_duplicate_articles() {
+        let pool = setup_pool().await;
+        let article_requests = Arc::new(AtomicUsize::new(0));
+        let llm_requests = Arc::new(AtomicUsize::new(0));
+        let url =
+            start_duplicate_guard_feed_server(article_requests.clone(), llm_requests.clone()).await;
+        let now = unix_now();
+
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (13, ?, 'Duplicate Fixture', NULL, 1, 0, 1, 0, 'http://example.org', 0, 0, NULL, 0, ?, 1, 1)")
+            .bind(&url)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        insert_test_article_with_hash(
+            &pool,
+            13,
+            "tag:example.org,2026:duplicate-entry",
+            &format!(
+                "{:x}",
+                md5::compute("tag:example.org,2026:duplicate-entry".as_bytes())
+            ),
+            now,
+            1,
+            0,
+        )
+        .await;
+
+        let updated = update_due_feeds(
+            &pool,
+            &test_config_with_llm(url.trim_end_matches("/atom.xml")),
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated, 1);
+        assert_eq!(article_requests.load(Ordering::SeqCst), 0);
+        assert_eq!(llm_requests.load(Ordering::SeqCst), 0);
+    }
+
     async fn start_quality_fixture_feed_server(
         entry_summary: Option<&str>,
         entry_content: Option<&str>,
@@ -998,6 +1051,83 @@ mod tests {
     <updated>2026-03-06T00:00:00Z</updated>
         {summary_xml}
         {content_xml}
+  </entry>
+</feed>"#,
+                            ),
+                        )
+                    }
+                }),
+            );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/atom.xml")
+    }
+
+    async fn start_duplicate_guard_feed_server(
+        article_requests: Arc<AtomicUsize>,
+        llm_requests: Arc<AtomicUsize>,
+    ) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let article_url = format!("http://{addr}/article");
+        let app = Router::new()
+            .route(
+                "/article",
+                get(move || {
+                    let article_requests = article_requests.clone();
+                    async move {
+                        article_requests.fetch_add(1, Ordering::SeqCst);
+                        (
+                            [(http_header::CONTENT_TYPE, "text/html")],
+                            "<html><body><article><p>duplicate article body</p></article></body></html>",
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/v1/chat/completions",
+                post(move || {
+                    let llm_requests = llm_requests.clone();
+                    async move {
+                        llm_requests.fetch_add(1, Ordering::SeqCst);
+                        (
+                            [(http_header::CONTENT_TYPE, "application/json")],
+                            json!({
+                                "choices": [
+                                    {
+                                        "message": {
+                                            "content": r#"{"summary":"Should not be called."}"#
+                                        }
+                                    }
+                                ]
+                            })
+                            .to_string(),
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/atom.xml",
+                get(move || {
+                    let article_url = article_url.clone();
+                    async move {
+                        (
+                            [(http_header::CONTENT_TYPE, "application/atom+xml")],
+                            format!(
+                                r#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Duplicate Fixture</title>
+  <link href="http://example.org/" />
+  <updated>2026-03-06T00:00:00Z</updated>
+  <id>tag:example.org,2026:duplicate-feed</id>
+  <entry>
+    <title>Duplicate Entry</title>
+    <link href="{article_url}" />
+    <id>tag:example.org,2026:duplicate-entry</id>
+    <updated>2026-03-06T00:00:00Z</updated>
+    <summary>Duplicate teaser</summary>
+    <content type="html"><![CDATA[<p>Duplicate teaser</p>]]></content>
   </entry>
 </feed>"#,
                             ),

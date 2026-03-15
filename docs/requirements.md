@@ -50,9 +50,6 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `API-002`: The service shall preserve Nextcloud News API compatibility for v1-2 and v1-3 contracts.
 - `API-003`: API payload field naming shall preserve contract casing (including camelCase fields).
 
-### Observability
-- `OBS-001`: All incoming API requests shall be logged at `INFO` level with the matched route and query parameters.
-- `OBS-002`: All outbound LLM requests shall be logged at `INFO` level with the task name and, when available, the associated `feed_id` and `article_id`.
 
 ### Feed Lifecycle And Refresh
 - `FEED-001`: The system shall parse and ingest both RSS and Atom feeds.
@@ -110,6 +107,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - when LLM support is configured, `use_llm_summary` shall be enabled if the feed summary is missing or judged not good enough, and disabled if the feed summary is judged good enough,
   - when LLM support is not configured, the summary-quality check shall fall back to a heuristic that enables `use_llm_summary` when the normalized feed summary is missing or closely matches the beginning of the final chosen article text.
 - `CNT-005`: Optional LLM-based article summarization when loading new articles:
+  - shall run only for new articles after GUID-hash de-duplication confirms the article is not already stored,
   - shall be enabled only when LLM support is configured and LLM summarization is enabled for the articles feed,
   - shall strip HTML from article content before sending it to the model,
   - shall truncate article text to the first 8000 characters before LLM summarization,
@@ -118,6 +116,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - be accepted only when a non-empty `summary` value is returned,
   - include the suffix ` (AI generated)`.
 - `CNT-007`: Automatic summary generation for articles without an existing summary:
+  - shall run only for new articles before they are inserted into the database,
   - shall copy the full article content into the summary when content length is below 160 characters,
   - shall use LLM summarization only when content length is at least 160 characters and LLM summarization is both requested and enabled,
   - shall fall back to the first 160 characters plus `...` when content is long and LLM summarization is not requested, not enabled, or does not return a usable summary.
@@ -139,6 +138,11 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - LLM-based multi-item parsing shall create at most 25 articles from a single newsletter email.
 - `EML-008`: If LLM-based parsing is disabled, fails, returns invalid JSON, or produces no usable multi-item entries, newsletter ingestion shall fall back to creating a single article from the cleaned email content.
 - `EML-009`: Stale newsletter entries shall be eligible for cleanup only when older than 90 days, read, and unstarred.
+
+### Observability
+- `OBS-001`: All incoming API requests shall be logged at `INFO` level with the matched route and query parameters.
+- `OBS-002`: All outbound LLM requests shall be logged at `INFO` level with the task name and, when available, the associated `feed_id` and `article_id`.
+- `OBS-003`: Extraction of article content as described in `CNT-002` shall be logged with `feed_id`, `article_id` loaded URL at `INFO` level.
 
 ### Security
 - `SEC-001`: Remote URL validation shall allow only `http` and `https` schemes.

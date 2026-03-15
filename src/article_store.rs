@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use crate::config::Config;
 use crate::content::{self, FeedContentState};
 
-/// Internal representation used before persisting an article row.
+/// Internal representation of a new article before persistence.
 #[derive(Debug, Clone)]
 pub struct ArticleRecord {
     pub title: Option<String>,
@@ -53,14 +53,8 @@ pub fn guid_from_feed_entry(entry: &Entry) -> Option<String> {
     Some(entry.id.clone())
 }
 
-/// Builds an article record from a feed entry using the current content-quality flags.
-pub async fn article_record_from_feed_entry(
-    article_http_client: &reqwest::Client,
-    config: &Config,
-    feed_id: i64,
-    entry: &Entry,
-    content_state: FeedContentState,
-) -> Option<ArticleRecord> {
+/// Builds a new article record from a feed entry before any enrichment work runs.
+pub fn article_record_from_feed_entry(feed_id: i64, entry: &Entry) -> Option<ArticleRecord> {
     let guid = guid_from_feed_entry(entry)?;
     let content = entry
         .content
@@ -76,31 +70,18 @@ pub async fn article_record_from_feed_entry(
     let now_ts = unix_now();
     let updated = entry.updated.map(|dt| dt.timestamp()).unwrap_or(now_ts);
     let published = entry.published.map(|dt| dt.timestamp()).unwrap_or(updated);
-    let enriched = content::enrich_article_content(
-        article_http_client,
-        config,
-        Some(feed_id),
-        None,
-        url.as_deref(),
-        content,
-        summary,
-        None,
-        content_state.use_extracted_fulltext,
-        content_state.use_llm_summary,
-    )
-    .await;
 
     Some(ArticleRecord {
         title,
-        content: enriched.content,
+        content,
         author,
-        summary: enriched.summary,
-        content_hash: enriched.content_hash,
+        summary,
+        content_hash: None,
         feed_id,
         guid_hash: guid_hash(&guid),
         guid,
         last_modified: now_ts,
-        media_thumbnail: enriched.media_thumbnail,
+        media_thumbnail: None,
         pub_date: Some(published),
         updated_date: Some(updated),
         url,
@@ -109,18 +90,56 @@ pub async fn article_record_from_feed_entry(
     })
 }
 
+/// Returns whether an article with the given guid hash is already persisted.
+pub async fn article_exists_by_guid_hash(
+    pool: &SqlitePool,
+    guid_hash: &str,
+) -> Result<bool, sqlx::Error> {
+    let existing: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
+            .bind(guid_hash)
+            .fetch_optional(pool)
+            .await?;
+
+    Ok(existing.is_some())
+}
+
+/// Applies extraction and summary generation to a new article after duplicate checks pass.
+pub async fn enrich_article_record(
+    article_http_client: &reqwest::Client,
+    config: &Config,
+    content_state: FeedContentState,
+    article: ArticleRecord,
+) -> ArticleRecord {
+    let enriched = content::enrich_article_content(
+        article_http_client,
+        config,
+        Some(article.feed_id),
+        None,
+        article.url.as_deref(),
+        article.content,
+        article.summary,
+        article.media_thumbnail,
+        content_state.use_extracted_fulltext,
+        content_state.use_llm_summary,
+    )
+    .await;
+
+    ArticleRecord {
+        content: enriched.content,
+        summary: enriched.summary,
+        content_hash: enriched.content_hash,
+        media_thumbnail: enriched.media_thumbnail,
+        ..article
+    }
+}
+
 /// Inserts an article when its guid hash does not already exist.
 pub async fn insert_article_if_new(
     pool: &SqlitePool,
     article: ArticleRecord,
 ) -> Result<InsertArticleOutcome, sqlx::Error> {
-    let existing: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM article WHERE guid_hash = ? LIMIT 1")
-            .bind(&article.guid_hash)
-            .fetch_optional(pool)
-            .await?;
-
-    if existing.is_some() {
+    if article_exists_by_guid_hash(pool, &article.guid_hash).await? {
         return Ok(InsertArticleOutcome::Duplicate {
             guid_hash: article.guid_hash,
         });
