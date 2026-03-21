@@ -6,13 +6,17 @@ Test cases for non-Nextcloud service endpoints.
 ## Endpoint Coverage
 
 ### GET `/status`
-- Verify response status is `200`.
-- Verify response body is `{"status":"ok"}`.
+| ID | Case | Expected Result |
+|---|---|---|
+| TC-SVCAPI-001 | Response status | Returns `200`. |
+| TC-SVCAPI-002 | Response body | Returns `{"status":"ok"}`. |
 
 ## Cross-Cutting Coverage
-- Verify CORS headers on `/status` include wildcard origin.
-- Verify CORS preflight (`OPTIONS`) requests succeed and include allow-method headers.
-- Verify CORS behavior is consistent between `/status` and mounted Nextcloud routes.
+| ID | Case | Expected Result |
+|---|---|---|
+| TC-SVCAPI-003 | CORS headers on `/status` | Response includes wildcard origin. |
+| TC-SVCAPI-004 | CORS preflight support | `OPTIONS` requests succeed and include allow-method headers. |
+| TC-SVCAPI-005 | CORS consistency across mounted routes | CORS behavior is consistent between `/status` and mounted Nextcloud routes. |
 
 ## Primary Test Files
 - `tests/api/test_app.py`
