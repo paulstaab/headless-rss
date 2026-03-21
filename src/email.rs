@@ -592,7 +592,7 @@ fn parse_newsletter_llm_json_response(response_text: &str) -> Result<RawNewslett
         .cloned()
         .context("newsletter LLM response did not include expected fields")?;
 
-    tracing::warn!("unwrapped structured newsletter LLM response");
+    tracing::info!("unwrapped structured newsletter LLM response");
 
     serde_json::from_value(wrapped)
         .context("newsletter LLM response wrapper did not match the expected schema")
