@@ -47,6 +47,7 @@ cargo test --all-targets --all-features
 cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- update
+cargo run -- reevaluate-feed-quality --feed-id 42
 cargo run -- add-email-credentials --server imap.example.com --port 993 --username user@example.com --password yourpassword
 ```
 
