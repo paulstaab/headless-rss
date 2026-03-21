@@ -221,6 +221,8 @@ async fn add_feed_impl(
             last_quality_check: None,
             use_extracted_fulltext: false,
             use_llm_summary: false,
+            manual_use_extracted_fulltext: None,
+            manual_use_llm_summary: None,
         },
         &parsed.entries,
     )

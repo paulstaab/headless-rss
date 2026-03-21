@@ -109,6 +109,12 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - when LLM support is configured, the summary-quality check shall ask the LLM whether the feed-provided summary is a good standalone summary of the final chosen article text,
   - when LLM support is configured, `use_llm_summary` shall be enabled if the feed summary is missing or judged not good enough, and disabled if the feed summary is judged good enough,
   - when LLM support is not configured, the summary-quality check shall fall back to a heuristic that enables `use_llm_summary` when the normalized feed summary is missing or closely matches the beginning of the final chosen article text.
+- `CNT-008`: Manual feed-quality overrides:
+  - shall allow `use_extracted_fulltext` and `use_llm_summary` to be set independently per feed,
+  - shall lock only the manually set attribute and leave the other attribute eligible for future automatic quality evaluation,
+  - shall update the effective feed-level quality flag immediately when a manual override is applied,
+  - shall update `last_quality_check` and a dedicated manual-override timestamp when a manual override is applied,
+  - shall be cleared when the dedicated feed-quality re-evaluation command is run for that feed.
 - `CNT-005`: Optional LLM-based article summarization when loading new articles:
   - shall run only for new articles after GUID-hash de-duplication confirms the article is not already stored,
   - shall be enabled only when LLM support is configured and LLM summarization is enabled for the articles feed,
@@ -169,9 +175,11 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `CLI-001`: A CLI `update` command shall initialize persistent storage access and execute a refresh cycle.
 - `CLI-002`: A CLI `add-email-credentials` command shall require server, port, username, and password inputs.
 - `CLI-003`: `add-email-credentials` shall return a user-visible error when credential validation fails.
-- `CLI-004`: A CLI `reevaluate-feed-quality` command shall require a regular-feed ID, fetch that feed, and force re-evaluation of the feed-level `use_extracted_fulltext` and `use_llm_summary` quality flags without ingesting articles.
+- `CLI-004`: A CLI `reevaluate-feed-quality` command shall require a regular-feed ID, fetch that feed, clear any manual feed-quality overrides for that feed, and force re-evaluation of the feed-level `use_extracted_fulltext` and `use_llm_summary` quality flags without ingesting articles.
+- `CLI-005`: A CLI `set-feed-quality` command shall require a regular-feed ID plus at least one of `use_extracted_fulltext` or `use_llm_summary`, persist manual overrides for the provided attributes, and update the effective feed quality flags immediately.
 
 ### Data Model And Constraints
 - `DAT-001`: Persistence shall include `Feed`, `Folder`, `Article`, and `EmailCredential` entities.
 - `DAT-002`: Feed URL uniqueness shall be enforced.
 - `DAT-003`: Folder name uniqueness shall be enforced.
+- `DAT-004`: Feed persistence shall store nullable per-attribute manual quality-override fields for `use_extracted_fulltext` and `use_llm_summary`, plus a timestamp for the most recent manual override.
