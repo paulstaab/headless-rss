@@ -672,13 +672,16 @@ fn extract_bool_from_structured_response(
 }
 
 /// Builds the structured-output payload used for article summarization requests.
+///
+/// The prompt keeps summaries brief, uses a newspaper-style tone, and requires
+/// the summary language to match the source article language.
 fn build_openai_summary_payload(model: &str, article_text: &str) -> serde_json::Value {
     json!({
         "model": model,
         "messages": [
             {
                 "role": "system",
-                "content": "Summarize the article clearly and concisely. Return 3-6 sentences, no bullets, no headings, plain text only. Return exactly one JSON object with a top-level `summary` field and no wrapper object."
+                "content": "Summarize the article in a newspaper article summary style. Return 2-3 sentences only, no bullets, no headings, plain text only. Always write the summary in the same language as the article. Return exactly one JSON object with a top-level `summary` field and no wrapper object."
             },
             {
                 "role": "user",
@@ -782,9 +785,9 @@ mod tests {
 
     use super::{
         ARTICLE_SUMMARY_SCHEMA_NAME, ArticleContentContext, ArticleContentPayload,
-        SUMMARY_QUALITY_SCHEMA_NAME, build_missing_summary, enrich_article_content,
-        extract_article_from_html, extract_bool_from_structured_response, extract_first_image_url,
-        extract_string_from_structured_response, extraction_tld_check,
+        SUMMARY_QUALITY_SCHEMA_NAME, build_missing_summary, build_openai_summary_payload,
+        enrich_article_content, extract_article_from_html, extract_bool_from_structured_response,
+        extract_first_image_url, extract_string_from_structured_response, extraction_tld_check,
         is_extracted_content_preferred, normalize_text, parse_llm_json_response, plain_text,
         should_enable_llm_summary_by_heuristic,
     };
@@ -901,6 +904,20 @@ mod tests {
             .as_deref(),
             Some("Wrapped summary.")
         );
+    }
+
+    #[test]
+    fn summary_payload_requests_short_newspaper_style_same_language_output() {
+        let payload = build_openai_summary_payload("test-model", "Bonjour le monde");
+        let system_prompt = payload["messages"][0]["content"]
+            .as_str()
+            .expect("expected system prompt");
+
+        assert!(system_prompt.contains("newspaper article summary style"));
+        assert!(system_prompt.contains("Return 2-3 sentences only"));
+        assert!(system_prompt.contains("same language as the article"));
+        assert!(system_prompt.contains("top-level `summary` field"));
+        assert!(system_prompt.contains("exactly one JSON object"));
     }
 
     #[test]
