@@ -207,6 +207,8 @@ Rust API tests seed fixture data on top of the production SQL migrations so sche
 | TC-PIPE-029 | Newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
 | TC-PIPE-030 | Newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
 | TC-PIPE-031 | Newsletter success clears stale feed errors | Seed a mailing-list feed with non-zero `update_error_count` and `last_update_error`, then process a valid newsletter email for that feed. | Newsletter article persistence succeeds and the feed error fields reset to `0` and `NULL`. |
+| TC-PIPE-032 | Forced feed-quality re-evaluation command path | Trigger the dedicated feed-quality re-evaluation path for a regular feed whose last quality check is still fresh. | Feed quality flags and timestamp are refreshed immediately, while `next_update_time` and article rows remain unchanged. |
+| TC-PIPE-033 | Forced feed-quality re-evaluation missing feed | Trigger the dedicated feed-quality re-evaluation path for a non-existent feed ID. | The command path fails with a user-visible `feed {id} not found` error. |
 
 ## Database Bootstrap Test Cases
 

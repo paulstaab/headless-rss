@@ -169,6 +169,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
 - `CLI-001`: A CLI `update` command shall initialize persistent storage access and execute a refresh cycle.
 - `CLI-002`: A CLI `add-email-credentials` command shall require server, port, username, and password inputs.
 - `CLI-003`: `add-email-credentials` shall return a user-visible error when credential validation fails.
+- `CLI-004`: A CLI `reevaluate-feed-quality` command shall require a regular-feed ID, fetch that feed, and force re-evaluation of the feed-level `use_extracted_fulltext` and `use_llm_summary` quality flags without ingesting articles.
 
 ### Data Model And Constraints
 - `DAT-001`: Persistence shall include `Feed`, `Folder`, `Article`, and `EmailCredential` entities.

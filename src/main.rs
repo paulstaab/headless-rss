@@ -50,6 +50,10 @@ enum Commands {
         #[arg(long)]
         password: String,
     },
+    ReevaluateFeedQuality {
+        #[arg(long)]
+        feed_id: i64,
+    },
 }
 
 #[tokio::main]
@@ -81,7 +85,37 @@ async fn main() -> anyhow::Result<()> {
             email_credentials::add_email_credentials(&config, server, port, username, password)
                 .await
         }
+        Commands::ReevaluateFeedQuality { feed_id } => {
+            tracing::debug!(feed_id, "cli command invoked: reevaluate-feed-quality");
+            let result = updater::reevaluate_feed_quality(&config, feed_id).await?;
+            println!("Feed quality re-evaluation completed.");
+            println!("Feed ID: {}", result.feed_id);
+            println!(
+                "Feed title: {}",
+                result.feed_title.as_deref().unwrap_or("(untitled)")
+            );
+            println!(
+                "Use extracted full text: {}",
+                bool_to_enabled_disabled(result.use_extracted_fulltext)
+            );
+            println!(
+                "Use LLM summary: {}",
+                bool_to_enabled_disabled(result.use_llm_summary)
+            );
+            println!(
+                "Last quality check: {}",
+                result
+                    .last_quality_check
+                    .map(|timestamp| format!("{timestamp} (unix seconds)"))
+                    .unwrap_or_else(|| "not updated".to_string())
+            );
+            Ok(())
+        }
     }
+}
+
+fn bool_to_enabled_disabled(value: bool) -> &'static str {
+    if value { "enabled" } else { "disabled" }
 }
 
 fn init_tracing() {

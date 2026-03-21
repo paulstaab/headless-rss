@@ -1,6 +1,7 @@
 //! Scheduled feed refresh logic, dynamic cadence calculation, and stale-article cleanup.
 
 use anyhow::{Context, Result};
+use feed_rs::model::Feed;
 use rand::RngExt;
 use sqlx::{FromRow, SqlitePool};
 
@@ -30,6 +31,7 @@ const NINETY_DAYS: i64 = 90 * ONE_DAY;
 struct FeedToUpdate {
     id: i64,
     url: String,
+    title: Option<String>,
     last_quality_check: Option<i64>,
     use_extracted_fulltext: bool,
     use_llm_summary: bool,
@@ -45,6 +47,16 @@ struct FeedEntryIngestionContext<'a> {
     content_state: FeedContentState,
 }
 
+/// Human-readable result of a forced feed-quality re-evaluation.
+#[derive(Debug)]
+pub struct FeedQualityReevaluationResult {
+    pub feed_id: i64,
+    pub feed_title: Option<String>,
+    pub use_extracted_fulltext: bool,
+    pub use_llm_summary: bool,
+    pub last_quality_check: Option<i64>,
+}
+
 /// Runs one foreground update cycle for the CLI `update` command.
 pub async fn update_all(config: &Config) -> Result<()> {
     tracing::info!("starting rust feed update cycle");
@@ -56,6 +68,21 @@ pub async fn update_all(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Re-evaluates one regular feed's full-text and summary quality flags immediately.
+///
+/// This command fetches and parses the selected feed, forces the quality-check path to run even
+/// when the last monthly evaluation is still fresh, and persists only the feed-level quality
+/// flags. It does not ingest articles or recalculate the feed cadence.
+pub async fn reevaluate_feed_quality(
+    config: &Config,
+    feed_id: i64,
+) -> Result<FeedQualityReevaluationResult> {
+    let pool = db::create_pool(&config.db_path)
+        .await
+        .with_context(|| format!("failed to connect to sqlite db at {}", config.db_path))?;
+    reevaluate_single_feed_quality(&pool, config, feed_id, config.testing_mode).await
+}
+
 /// Refreshes only feeds whose `next_update_time` is due.
 pub async fn update_due_feeds(
     pool: &SqlitePool,
@@ -64,7 +91,7 @@ pub async fn update_due_feeds(
 ) -> Result<usize> {
     let now_ts = article_store::unix_now();
     let feeds: Vec<FeedToUpdate> = sqlx::query_as(
-        "SELECT id, url, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
+        "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0 AND (next_update_time IS NULL OR next_update_time <= ?)",
     )
     .bind(now_ts)
     .fetch_all(pool)
@@ -82,7 +109,7 @@ pub async fn update_all_regular_feeds(
 ) -> Result<usize> {
     let feeds: Vec<FeedToUpdate> =
         sqlx::query_as(
-            "SELECT id, url, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0",
+            "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE is_mailing_list = 0",
         )
             .fetch_all(pool)
             .await
@@ -164,19 +191,7 @@ async fn update_single_feed(
     let feed_id = feed.id;
     let url = feed.url.as_str();
     tracing::debug!(feed_id, testing_mode, "starting feed update");
-    let response = ssrf::get_with_safe_redirects(feed_http_client, url, testing_mode)
-        .await
-        .map_err(ssrf::SafeGetError::into_anyhow)
-        .with_context(|| format!("request failed for {url}"))?;
-    if !response.status().is_success() {
-        anyhow::bail!("request failed for {url}: HTTP {}", response.status());
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .context("failed to read response body")?;
-    let parsed = feed_rs::parser::parse(&bytes[..]).context("failed to parse feed")?;
+    let parsed = fetch_and_parse_feed(feed_http_client, url, testing_mode).await?;
     let content_state = content::maybe_refresh_feed_content_state(
         pool,
         article_http_client,
@@ -234,6 +249,78 @@ async fn update_single_feed(
         "feed update completed"
     );
     Ok(())
+}
+
+/// Fetches one regular feed and forces a fresh content-quality evaluation.
+async fn reevaluate_single_feed_quality(
+    pool: &SqlitePool,
+    config: &Config,
+    feed_id: i64,
+    testing_mode: bool,
+) -> Result<FeedQualityReevaluationResult> {
+    let feed_http_client = http_client::build_feed_http_client()?;
+    let article_http_client = http_client::build_article_http_client()?;
+    let feed: FeedToUpdate = sqlx::query_as(
+        "SELECT id, url, title, last_quality_check, use_extracted_fulltext, use_llm_summary FROM feed WHERE id = ? AND is_mailing_list = 0",
+    )
+    .bind(feed_id)
+    .fetch_optional(pool)
+    .await
+    .context("failed to load feed for quality re-evaluation")?
+    .with_context(|| format!("feed {feed_id} not found"))?;
+    let parsed = fetch_and_parse_feed(&feed_http_client, &feed.url, testing_mode).await?;
+    tracing::info!(
+        feed_id,
+        "starting forced feed content quality re-evaluation"
+    );
+
+    let next_state = content::maybe_refresh_feed_content_state(
+        pool,
+        &article_http_client,
+        config,
+        feed.id,
+        &feed.url,
+        FeedContentState {
+            last_quality_check: None,
+            use_extracted_fulltext: feed.use_extracted_fulltext,
+            use_llm_summary: feed.use_llm_summary,
+        },
+        &parsed.entries,
+    )
+    .await?;
+
+    tracing::info!(
+        feed_id,
+        "finished forced feed content quality re-evaluation"
+    );
+    Ok(FeedQualityReevaluationResult {
+        feed_id,
+        feed_title: feed.title,
+        use_extracted_fulltext: next_state.use_extracted_fulltext,
+        use_llm_summary: next_state.use_llm_summary,
+        last_quality_check: next_state.last_quality_check,
+    })
+}
+
+/// Downloads a remote feed document and parses it into the shared feed model.
+async fn fetch_and_parse_feed(
+    feed_http_client: &reqwest::Client,
+    url: &str,
+    testing_mode: bool,
+) -> Result<Feed> {
+    let response = ssrf::get_with_safe_redirects(feed_http_client, url, testing_mode)
+        .await
+        .map_err(ssrf::SafeGetError::into_anyhow)
+        .with_context(|| format!("request failed for {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!("request failed for {url}: HTTP {}", response.status());
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read response body")?;
+    feed_rs::parser::parse(&bytes[..]).context("failed to parse feed")
 }
 
 /// Removes stale feed articles that are no longer present in the latest payload.
@@ -386,7 +473,7 @@ mod tests {
     use super::{
         NINETY_DAYS, ONE_DAY, THIRTY_MINUTES, TWELVE_HOURS, compute_next_update_interval, unix_now,
     };
-    use super::{update_all_regular_feeds, update_due_feeds};
+    use super::{reevaluate_single_feed_quality, update_all_regular_feeds, update_due_feeds};
 
     async fn setup_pool() -> SqlitePool {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -945,6 +1032,57 @@ mod tests {
             summary.as_deref(),
             Some("Fixture summary from mock LLM. (AI generated)")
         );
+    }
+
+    #[tokio::test]
+    async fn reevaluate_single_feed_quality_updates_flags_without_ingesting_articles() {
+        let pool = setup_pool().await;
+        let url = start_quality_fixture_feed_server(
+            Some("Short teaser."),
+            None,
+            "<html><body><article><p>This is a long extracted article body with enough detail to clearly exceed the teaser summary in the feed.</p><p>It contains additional explanation and supporting context.</p></article></body></html>",
+            None,
+        )
+        .await;
+        sqlx::query("INSERT INTO feed (id, url, title, favicon_link, added, next_update_time, folder_id, ordering, link, pinned, update_error_count, last_update_error, is_mailing_list, last_quality_check, use_extracted_fulltext, use_llm_summary) VALUES (14, ?, 'Quality Fixture', NULL, 1, 12345, 1, 0, 'http://example.org', 0, 0, NULL, 0, ?, 0, 0)")
+            .bind(url)
+            .bind(unix_now())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        reevaluate_single_feed_quality(&pool, &test_config(), 14, true)
+            .await
+            .unwrap();
+
+        let flags: (bool, bool, Option<i64>, Option<i64>) = sqlx::query_as(
+            "SELECT use_extracted_fulltext, use_llm_summary, last_quality_check, next_update_time FROM feed WHERE id = 14",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(flags.0);
+        assert!(!flags.1);
+        assert!(flags.2.is_some());
+        assert_eq!(flags.3, Some(12_345));
+
+        let article_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM article WHERE feed_id = 14")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(article_count, 0);
+    }
+
+    #[tokio::test]
+    async fn reevaluate_single_feed_quality_errors_for_missing_feed() {
+        let pool = setup_pool().await;
+
+        let err = reevaluate_single_feed_quality(&pool, &test_config(), 404, true)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("feed 404 not found"));
     }
 
     #[tokio::test]
