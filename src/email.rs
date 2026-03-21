@@ -201,6 +201,8 @@ async fn process_email_message(
         }
     }
 
+    clear_mailing_list_feed_error_state(pool, feed_id).await?;
+
     Ok(inserted)
 }
 
@@ -326,6 +328,19 @@ async fn find_or_create_mailing_list_feed(
     )
     .await
     .context("failed to create mailing-list feed")
+}
+
+/// Clears stale refresh error metadata after a mailing-list message is processed successfully.
+async fn clear_mailing_list_feed_error_state(pool: &SqlitePool, feed_id: i64) -> Result<()> {
+    sqlx::query(
+        "UPDATE feed SET update_error_count = 0, last_update_error = NULL WHERE id = ? AND is_mailing_list = 1",
+    )
+    .bind(feed_id)
+    .execute(pool)
+    .await
+    .context("failed to clear mailing-list feed update error state")?;
+
+    Ok(())
 }
 
 /// Resolves the internal root folder, creating it if a fresh test database does not contain one.
@@ -881,6 +896,35 @@ mod tests {
         assert!(!content.contains("hidden text"));
         assert!(!content.contains("tracking.gif"));
         assert!(!content.contains("<meta"));
+    }
+
+    #[tokio::test]
+    async fn successful_newsletter_processing_clears_stale_feed_error_state() {
+        let pool = setup_pool().await;
+        sqlx::query(
+            "INSERT INTO feed (id, url, title, added, folder_id, ordering, pinned, update_error_count, last_update_error, is_mailing_list, use_extracted_fulltext, use_llm_summary) VALUES (1, 'list@example.com', 'Example List', 1, 0, 0, 0, 2, 'invalid url', 1, 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let raw_email = b"Subject: Recovery Newsletter\r\nFrom: Example List <list@example.com>\r\nList-Unsubscribe: <mailto:unsubscribe@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody";
+        let client = reqwest::Client::new();
+        process_email_message(&pool, &client, &config(), raw_email)
+            .await
+            .unwrap();
+
+        let err_count: i64 = sqlx::query_scalar("SELECT update_error_count FROM feed WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let err_detail: Option<String> =
+            sqlx::query_scalar("SELECT last_update_error FROM feed WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(err_count, 0);
+        assert_eq!(err_detail, None);
     }
 
     #[tokio::test]
