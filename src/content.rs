@@ -916,6 +916,8 @@ mod tests {
         assert!(system_prompt.contains("newspaper article summary style"));
         assert!(system_prompt.contains("Return 2-3 sentences only"));
         assert!(system_prompt.contains("same language as the article"));
+        assert!(system_prompt.contains("top-level `summary` field"));
+        assert!(system_prompt.contains("exactly one JSON object"));
     }
 
     #[test]
