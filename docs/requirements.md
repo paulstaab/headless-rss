@@ -142,6 +142,7 @@ Implementation progress is tracked separately in `docs/implementation-status.md`
   - LLM-based multi-item parsing shall create at most 25 articles from a single newsletter email.
 - `EML-008`: If LLM-based parsing is disabled, fails, returns invalid JSON, or produces no usable multi-item entries, newsletter ingestion shall fall back to creating a single article from the cleaned email content.
 - `EML-009`: Stale newsletter entries shall be eligible for cleanup only when older than 90 days, read, and unstarred.
+- `EML-010`: Successful newsletter ingestion shall clear persisted refresh error state on the corresponding mailing-list feed.
 
 ### Observability
 - `OBS-001`: All incoming API requests shall be logged at `INFO` level with the raw request URI, including query parameters when present.

@@ -226,6 +226,7 @@ Source: `src/api.rs`
 | TC-RUST-085 | Rust mocked newsletter journey | Run the Rust CLI credential command and update command with a test-only mocked IMAP mailbox file. | Newsletter feed/items are created through the full subprocess path without requiring a real mailbox. |
 | TC-RUST-090 | Rust newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
 | TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
+| TC-RUST-096 | Rust newsletter success clears stale feed errors | Seed a mailing-list feed with non-zero `update_error_count` and `last_update_error`, then process a valid newsletter email for that feed. | Newsletter article persistence succeeds and the feed error fields reset to `0` and `NULL`. |
 | TC-RUST-092 | Rust v1-2 guid-star-multiple request limit | Call `PUT /index.php/apps/news/api/v1-2/items/star/multiple` with more than 10,000 guid-hash objects. | Returns `400` with `{"detail":"too many items in request: 10001 (max 10000)"}`. |
 
 ### Rust Newsletter Processing Test Cases
@@ -241,6 +242,7 @@ Source: `src/email.rs`
 | TC-RUST-084 | Rust updater runs newsletter cleanup without credentials | Run the Rust newsletter updater path with no stored mailbox credentials. | No fetch is attempted and stale newsletter cleanup still executes successfully. |
 | TC-RUST-090 | Rust newsletter parser falls back to single mode | Normalize an LLM newsletter parse result that provides fewer than two distinct usable item URLs. | Result is coerced to `single`, uses cleaned fallback content, and supplies a concise summary. |
 | TC-RUST-091 | Rust newsletter parser deduplicates multi-item links | Normalize an LLM newsletter parse result with duplicate item URLs and at least two distinct links. | Duplicate URLs are discarded and the result remains `multi` only when at least two distinct links remain. |
+| TC-RUST-096 | Rust newsletter success clears stale feed errors | Seed a mailing-list feed with non-zero `update_error_count` and `last_update_error`, then process a valid newsletter email for that feed. | Newsletter article persistence succeeds and the feed error fields reset to `0` and `NULL`. |
 
 ### Rust Migration Bootstrap Test Cases
 Source: `src/db.rs`
