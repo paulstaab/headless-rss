@@ -54,6 +54,14 @@ enum Commands {
         #[arg(long)]
         feed_id: i64,
     },
+    SetFeedQuality {
+        #[arg(long)]
+        feed_id: i64,
+        #[arg(long)]
+        use_extracted_fulltext: Option<bool>,
+        #[arg(long)]
+        use_llm_summary: Option<bool>,
+    },
 }
 
 #[tokio::main]
@@ -103,11 +111,71 @@ async fn main() -> anyhow::Result<()> {
                 bool_to_enabled_disabled(result.use_llm_summary)
             );
             println!(
+                "Manual extracted full text override: {}",
+                optional_bool_to_manual_state(result.manual_use_extracted_fulltext)
+            );
+            println!(
+                "Manual LLM summary override: {}",
+                optional_bool_to_manual_state(result.manual_use_llm_summary)
+            );
+            println!(
                 "Last quality check: {}",
                 result
                     .last_quality_check
                     .map(|timestamp| format!("{timestamp} (unix seconds)"))
                     .unwrap_or_else(|| "not updated".to_string())
+            );
+            println!("Last manual override: not set");
+            Ok(())
+        }
+        Commands::SetFeedQuality {
+            feed_id,
+            use_extracted_fulltext,
+            use_llm_summary,
+        } => {
+            tracing::debug!(feed_id, "cli command invoked: set-feed-quality");
+            let result = updater::set_feed_quality_overrides(
+                &config,
+                feed_id,
+                use_extracted_fulltext,
+                use_llm_summary,
+            )
+            .await?;
+            println!("Feed quality overrides updated.");
+            println!("Feed ID: {}", result.feed_id);
+            println!(
+                "Feed title: {}",
+                result.feed_title.as_deref().unwrap_or("(untitled)")
+            );
+            println!(
+                "Use extracted full text: {}",
+                bool_to_enabled_disabled(result.use_extracted_fulltext)
+            );
+            println!(
+                "Use LLM summary: {}",
+                bool_to_enabled_disabled(result.use_llm_summary)
+            );
+            println!(
+                "Manual extracted full text override: {}",
+                optional_bool_to_manual_state(result.manual_use_extracted_fulltext)
+            );
+            println!(
+                "Manual LLM summary override: {}",
+                optional_bool_to_manual_state(result.manual_use_llm_summary)
+            );
+            println!(
+                "Last quality check: {}",
+                result
+                    .last_quality_check
+                    .map(|timestamp| format!("{timestamp} (unix seconds)"))
+                    .unwrap_or_else(|| "not updated".to_string())
+            );
+            println!(
+                "Last manual override: {}",
+                result
+                    .last_manual_quality_override
+                    .map(|timestamp| format!("{timestamp} (unix seconds)"))
+                    .unwrap_or_else(|| "not set".to_string())
             );
             Ok(())
         }
@@ -116,6 +184,14 @@ async fn main() -> anyhow::Result<()> {
 
 fn bool_to_enabled_disabled(value: bool) -> &'static str {
     if value { "enabled" } else { "disabled" }
+}
+
+fn optional_bool_to_manual_state(value: Option<bool>) -> &'static str {
+    match value {
+        Some(true) => "enabled",
+        Some(false) => "disabled",
+        None => "automatic",
+    }
 }
 
 fn init_tracing() {

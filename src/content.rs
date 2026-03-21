@@ -23,11 +23,16 @@ const ARTICLE_SUMMARY_SCHEMA_NAME: &str = "article_summary";
 const SUMMARY_QUALITY_SCHEMA_NAME: &str = "summary_quality";
 
 /// Persisted feed-level content-quality flags reused while ingesting new feed entries.
+///
+/// Manual overrides are stored separately so periodic quality checks can keep selected
+/// attributes fixed while continuing to evaluate any unlocked attributes.
 #[derive(Clone, Copy, Debug)]
 pub struct FeedContentState {
     pub last_quality_check: Option<i64>,
     pub use_extracted_fulltext: bool,
     pub use_llm_summary: bool,
+    pub manual_use_extracted_fulltext: Option<bool>,
+    pub manual_use_llm_summary: Option<bool>,
 }
 
 /// Final article content chosen after optional extraction, summary generation, and thumbnail fallback.
@@ -185,6 +190,10 @@ fn normalized_host_suffix(url: &str) -> Option<String> {
 }
 
 /// Refreshes feed quality flags when the monthly evaluation window has elapsed.
+///
+/// Automatic evaluation updates only unlocked attributes. Any manual override already stored in
+/// `current_state` wins for that specific attribute while the other attribute still follows the
+/// sampled content-quality result.
 pub async fn maybe_refresh_feed_content_state(
     pool: &SqlitePool,
     article_http_client: &Client,
@@ -231,19 +240,27 @@ pub async fn maybe_refresh_feed_content_state(
         None => None,
         Some(_) => None,
     };
-    let use_extracted_fulltext =
+    let evaluated_use_extracted_fulltext =
         is_extracted_content_preferred(extracted_text.as_deref(), feed_content);
+    let use_extracted_fulltext = current_state
+        .manual_use_extracted_fulltext
+        .unwrap_or(evaluated_use_extracted_fulltext);
     let final_article_text = if use_extracted_fulltext {
         extracted_text.as_deref()
     } else {
         feed_content
     };
-    let use_llm_summary =
+    let evaluated_use_llm_summary =
         should_enable_llm_summary(config, feed_id, final_article_text, feed_summary).await;
+    let use_llm_summary = current_state
+        .manual_use_llm_summary
+        .unwrap_or(evaluated_use_llm_summary);
     let next_state = FeedContentState {
         last_quality_check: Some(unix_now()),
         use_extracted_fulltext,
         use_llm_summary,
+        manual_use_extracted_fulltext: current_state.manual_use_extracted_fulltext,
+        manual_use_llm_summary: current_state.manual_use_llm_summary,
     };
 
     sqlx::query(

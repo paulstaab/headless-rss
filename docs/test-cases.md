@@ -209,6 +209,8 @@ Rust API tests seed fixture data on top of the production SQL migrations so sche
 | TC-PIPE-031 | Newsletter success clears stale feed errors | Seed a mailing-list feed with non-zero `update_error_count` and `last_update_error`, then process a valid newsletter email for that feed. | Newsletter article persistence succeeds and the feed error fields reset to `0` and `NULL`. |
 | TC-PIPE-032 | Forced feed-quality re-evaluation command path | Trigger the dedicated feed-quality re-evaluation path for a regular feed whose last quality check is still fresh. | Feed quality flags and timestamp are refreshed immediately, while `next_update_time` and article rows remain unchanged. |
 | TC-PIPE-033 | Forced feed-quality re-evaluation missing feed | Trigger the dedicated feed-quality re-evaluation path for a non-existent feed ID. | The command path fails with a user-visible `feed {id} not found` error. |
+| TC-PIPE-034 | Manual feed-quality override locks only selected attribute | Run the manual feed-quality command for a regular feed while setting only one of the two quality flags. | The selected attribute persists as a manual override, the effective flag is updated immediately, the other attribute remains automatic, and both quality-check/manual-override timestamps are updated. |
+| TC-PIPE-035 | Forced re-evaluation clears manual feed-quality overrides | Seed a regular feed with manual overrides for one or both quality flags, then run the forced feed-quality re-evaluation command. | Manual override fields are cleared, the quality flags are recomputed from current feed content, and `next_update_time` remains unchanged. |
 
 ## Database Bootstrap Test Cases
 
