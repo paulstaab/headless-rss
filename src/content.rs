@@ -621,7 +621,7 @@ fn parse_llm_json_response(response_text: &str, response_kind: &str) -> Option<V
     match serde_json::from_str(response_text) {
         Ok(parsed) => Some(parsed),
         Err(err) => {
-            tracing::warn!(error = %err, response_kind, "structured LLM response was not valid JSON");
+            tracing::error!(error = %err, response_kind, "structured LLM response was not valid JSON");
             None
         }
     }

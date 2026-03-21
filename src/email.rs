@@ -12,7 +12,7 @@ use mailparse::{MailHeaderMap, ParsedMail};
 use native_tls::TlsConnector;
 use regex::Regex;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use sqlx::{FromRow, SqlitePool};
 use std::env;
 use std::fs;
@@ -566,16 +566,36 @@ async fn parse_newsletter_with_llm(
     )
     .await?;
 
-    let parsed: RawNewsletterLlmResult = match serde_json::from_str(&response_text) {
+    let parsed = match parse_newsletter_llm_json_response(&response_text) {
         Ok(parsed) => parsed,
         Err(err) => {
-            let _ = err;
-            tracing::warn!("newsletter llm response was not valid JSON");
+            tracing::error!(error = %err, feed_id, "newsletter LLM response could not be parsed");
             return None;
         }
     };
 
     Some(normalize_llm_result(parsed, content))
+}
+
+/// Parses a structured newsletter LLM response, accepting either top-level fields
+/// or a schema-name wrapper under `newsletter_parse`.
+fn parse_newsletter_llm_json_response(response_text: &str) -> Result<RawNewsletterLlmResult> {
+    let parsed: Value = serde_json::from_str(response_text)
+        .context("newsletter LLM response was not valid JSON")?;
+
+    if let Ok(result) = serde_json::from_value::<RawNewsletterLlmResult>(parsed.clone()) {
+        return Ok(result);
+    }
+
+    let wrapped = parsed
+        .get("newsletter_parse")
+        .cloned()
+        .context("newsletter LLM response did not include expected fields")?;
+
+    tracing::warn!("unwrapped structured newsletter LLM response");
+
+    serde_json::from_value(wrapped)
+        .context("newsletter LLM response wrapper did not match the expected schema")
 }
 
 /// Normalizes raw LLM output into a deterministic newsletter parse result.
@@ -778,7 +798,8 @@ mod tests {
         EmailCredentialRow, NEWSLETTER_MAX_ITEMS, NEWSLETTER_SINGLE_SUMMARY_MAX_CHARS,
         NewsletterItem, NewsletterLlmResult, build_articles_from_email, clean_newsletter_html,
         clean_up_old_newsletters, fetch_emails_from_all_mailboxes_with_fetcher,
-        load_mock_messages_from_env, normalize_llm_result, process_email_message,
+        load_mock_messages_from_env, normalize_llm_result, parse_newsletter_llm_json_response,
+        process_email_message,
     };
 
     async fn setup_pool() -> SqlitePool {
@@ -980,6 +1001,17 @@ mod tests {
         assert_eq!(articles[0].content.as_deref(), Some("Cleaned content text"));
         assert_eq!(articles[0].summary.as_deref(), Some("Concise summary"));
         assert!(articles[0].url.is_none());
+    }
+
+    #[test]
+    fn newsletter_parser_accepts_schema_wrapped_response() {
+        let parsed = parse_newsletter_llm_json_response(
+            r#"{"newsletter_parse":{"mode":"multi","items":[{"url":"https://example.com/1","summary":"One"},{"url":"https://example.com/2","summary":"Two"}]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(parsed.mode, "multi");
+        assert_eq!(parsed.items.as_ref().map(Vec::len), Some(2));
     }
 
     #[tokio::test]

@@ -63,7 +63,7 @@ pub async fn request_chat_completion_content(
     {
         Ok(client) => client,
         Err(err) => {
-            tracing::warn!(
+            tracing::error!(
                 error = %format_error_chain(&err),
                 task_name = context.task_name,
                 feed_id = context.feed_id,
@@ -111,7 +111,7 @@ pub async fn request_chat_completion_content(
         let status = response.status();
         if let Err(err) = response.text().await {
             let _ = err;
-            tracing::warn!(
+            tracing::error!(
                 status = %status,
                 task_name = context.task_name,
                 feed_id = context.feed_id,
@@ -120,7 +120,7 @@ pub async fn request_chat_completion_content(
             );
         }
 
-        tracing::warn!(
+        tracing::error!(
             status = %status,
             task_name = context.task_name,
             feed_id = context.feed_id,
@@ -134,7 +134,7 @@ pub async fn request_chat_completion_content(
         Ok(body) => body,
         Err(err) => {
             let _ = err;
-            tracing::warn!(
+            tracing::error!(
                 task_name = context.task_name,
                 feed_id = context.feed_id,
                 article_id = context.article_id,
@@ -147,8 +147,8 @@ pub async fn request_chat_completion_content(
     let body: OpenAiChatCompletionResponse = match serde_json::from_str(&response_body) {
         Ok(body) => body,
         Err(err) => {
-            let _ = err;
-            tracing::warn!(
+            tracing::error!(
+                error = %err,
                 task_name = context.task_name,
                 feed_id = context.feed_id,
                 article_id = context.article_id,
