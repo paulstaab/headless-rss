@@ -63,7 +63,7 @@ pub async fn request_chat_completion_content(
     {
         Ok(client) => client,
         Err(err) => {
-            tracing::warn!(
+            tracing::error!(
                 error = %format_error_chain(&err),
                 task_name = context.task_name,
                 feed_id = context.feed_id,
@@ -109,32 +109,32 @@ pub async fn request_chat_completion_content(
 
     if !response.status().is_success() {
         let status = response.status();
-        if let Err(err) = response.text().await {
-            let _ = err;
-            tracing::warn!(
+        match response.text().await {
+            Ok(body) => tracing::error!(
                 status = %status,
+                response_body = %body,
                 task_name = context.task_name,
                 feed_id = context.feed_id,
                 article_id = context.article_id,
-                "failed to read OpenAI error response body"
-            );
+                "OpenAI request returned non-success status"
+            ),
+            Err(err) => tracing::error!(
+                status = %status,
+                error = %err,
+                task_name = context.task_name,
+                feed_id = context.feed_id,
+                article_id = context.article_id,
+                "OpenAI request returned non-success status; failed to read response body"
+            ),
         }
-
-        tracing::warn!(
-            status = %status,
-            task_name = context.task_name,
-            feed_id = context.feed_id,
-            article_id = context.article_id,
-            "OpenAI request returned non-success status"
-        );
         return None;
     }
 
     let response_body = match response.text().await {
         Ok(body) => body,
         Err(err) => {
-            let _ = err;
-            tracing::warn!(
+            tracing::error!(
+                error = %err,
                 task_name = context.task_name,
                 feed_id = context.feed_id,
                 article_id = context.article_id,
@@ -147,8 +147,8 @@ pub async fn request_chat_completion_content(
     let body: OpenAiChatCompletionResponse = match serde_json::from_str(&response_body) {
         Ok(body) => body,
         Err(err) => {
-            let _ = err;
-            tracing::warn!(
+            tracing::error!(
+                error = %err,
                 task_name = context.task_name,
                 feed_id = context.feed_id,
                 article_id = context.article_id,
