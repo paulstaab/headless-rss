@@ -1,5 +1,8 @@
 # headless-rss
 
+> **⚠️ This project has been archived.**
+> Development has moved to [newsboxone](https://github.com/paulstaab/newsboxone). Please use that project instead.
+
 `headless-rss` is a self-hosted RSS and newsletter aggregator written in Rust. It exposes a Nextcloud News compatible API and is intended for single-user, homelab-style deployments.
 
 If you need a larger multi-user system or broader protocol/database support, look at [Arsse](https://code.mensbeam.com/MensBeam/Arsse) or [Nextcloud News](https://apps.nextcloud.com/apps/news).
